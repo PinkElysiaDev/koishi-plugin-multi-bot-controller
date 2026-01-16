@@ -1,0 +1,47 @@
+{
+    "name": "koishi-plugin-multi-bot-controller",
+    "description": "Multi-bot response controller - Manage which bot should respond to messages in multi-bot scenarios",
+    "version": "0.1.0",
+    "type": "module",
+    "main": "lib/index.cjs",
+    "module": "lib/index.mjs",
+    "typings": "lib/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./lib/index.d.ts",
+            "import": "./lib/index.mjs",
+            "require": "./lib/index.cjs"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "lib"
+    ],
+    "license": "MIT",
+    "keywords": [
+        "chatbot",
+        "koishi",
+        "plugin",
+        "multi-bot",
+        "bot-controller",
+        "bot-dispatcher"
+    ],
+    "peerDependencies": {
+        "koishi": "^4.18.0",
+        "@satorijs/protocol": "^1.6.0"
+    },
+    "devDependencies": {
+        "@koishijs/scripts": "^4.6.1",
+        "koishi": "^4.18.0",
+        "typescript": "^5.6.2"
+    },
+    "koishi": {
+        "description": {
+            "zh": "多 Bot 响应控制器 - 管理多个 Bot 在同一频道中的响应行为，支持基于关键词和指令的过滤规则",
+            "en": "Multi-bot response controller - Manage which bot should respond to messages in multi-bot scenarios"
+        },
+        "service": {
+            "required": []
+        }
+    }
+}
