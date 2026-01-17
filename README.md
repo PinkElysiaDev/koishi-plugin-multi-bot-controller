@@ -1,14 +1,18 @@
 # koishi-plugin-multi-bot-controller
 
-[![npm](https://img.shields.io/npm/v/koishi-plugin-multi-bot-controller)](https://www.npmjs.com/package/koishi-plugin-multi-bot-controller)
+[![npm](https://img.shields.io/npm/v/koishi-plugin-multi-bot-controller)](https://www.npmjs.org/package/koishi-plugin-multi-bot-controller)
 
 Multi-bot response controller for Koishi. Manage which bot should respond to messages in multi-bot scenarios.
 
 ## 功能特性
 
 - **两种响应模式**
-  - `constrained`（有条件约束）：根据关键词和指令决定是否响应
-  - `unconstrained`（无约束）：非指令消息全部放行，由后续插件（如 LLM）判断
+  - `constrained`（约束模式）：非指令消息必须匹配关键词才响应，适合功能型 Bot
+  - `unconstrained`（放行模式）：非指令消息全部放行，适合 LLM 智能对话 Bot
+
+- **来源过滤**
+  - 支持按群号、用户 ID、频道 ID、私聊进行过滤
+  - 黑名单/白名单模式
 
 - **指令过滤**
   - 黑名单模式：只响应列表中的指令
@@ -18,9 +22,14 @@ Multi-bot response controller for Koishi. Manage which bot should respond to mes
   - 黑名单模式：只响应匹配关键词的消息
   - 白名单模式：只响应不匹配关键词的消息
 
+- **艾特优先**
+  - 当消息艾特了某个 Bot 时，只有被艾特的 Bot 会响应
+  - 此逻辑优先级最高，通用于任何模式
+
 - **辅助命令**
   - `mc.bots` - 查看可用的 Bot 列表
   - `mc.commands` - 查看可用的指令列表
+  - `mc.copy-commands` - 获取所有指令名称（方便配置时使用）
   - `mc.config` - 查看当前插件配置
 
 ## 安装
@@ -38,62 +47,62 @@ pnpm add koishi-plugin-multi-bot-controller
 
 ## 配置
 
-在 `koishi.yml` 中添加插件配置：
-
-```yaml
-plugins:
-  multi-bot-controller:
-    debug: false
-    bots:
-      # Bot 1: 有条件约束模式
-      - platform: qq
-        selfId: "123456789"
-        enabled: true
-        mode: constrained
-        commands: []
-        commandFilterMode: blacklist
-        keywords: ["你好", "帮助", "查询"]
-        keywordFilterMode: blacklist
-
-      # Bot 2: 无约束模式（给 LLM 用）
-      - platform: qq
-        selfId: "987654321"
-        enabled: true
-        mode: unconstrained
-        commands: ["echo", "ping"]
-        commandFilterMode: whitelist
-```
-
-### 配置说明
-
-#### 顶层配置
+### 顶层配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `debug` | `boolean` | `false` | 是否启用调试日志 |
 | `bots` | `BotConfig[]` | `[]` | Bot 配置列表 |
 
-#### Bot 配置 (BotConfig)
+### Bot 配置 (BotConfig)
+
+#### 基础配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `platform` | `string` | **必需** | 平台名称（如 `qq`, `discord`） |
+| `platform` | `string` | **必需** | 平台名称（如 `onebot`, `qq`, `discord`） |
 | `selfId` | `string` | **必需** | Bot 账号 ID |
 | `enabled` | `boolean` | `true` | 是否启用此 bot 的响应控制 |
-| `mode` | `ResponseMode` | `unconstrained` | 响应模式 |
-| `commands` | `string[]` | `[]` | 允许响应的指令列表（空列表表示允许所有） |
-| `commandFilterMode` | `FilterMode` | `blacklist` | 指令过滤模式 |
-| `keywords` | `string[]` | `[]` | 关键词列表（仅 constrained 模式生效） |
-| `keywordFilterMode` | `FilterMode` | `blacklist` | 关键词过滤模式 |
+| `mode` | `ResponseMode` | **必需** | 响应模式：`constrained` / `unconstrained` |
 
-#### 响应模式 (ResponseMode)
+#### 来源过滤
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `enableSourceFilter` | `boolean` | `false` | 是否启用来源过滤 |
+| `sourceFilters` | `SourceFilter[]` | `[]` | 来源过滤规则列表 |
+| `sourceFilterMode` | `FilterMode` | `whitelist` | 来源过滤模式：`blacklist` / `whitelist` |
+
+来源过滤规则 (SourceFilter)：
+- `type: 'guild'` - 按群号过滤，`value` 为群号
+- `type: 'user'` - 按用户 ID 过滤，`value` 为用户 ID
+- `type: 'channel'` - 按频道 ID 过滤，`value` 为频道 ID
+- `type: 'private'` - 私聊过滤，`value` 为是否允许私聊
+
+#### 指令过滤
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `enableCommandFilter` | `boolean` | `false` | 是否启用指令过滤 |
+| `commands` | `string[]` | `[]` | 允许响应的指令列表 |
+| `commandFilterMode` | `FilterMode` | `blacklist` | 指令过滤模式：`blacklist` / `whitelist` |
+
+#### 关键词过滤（仅 constrained 模式）
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `enableKeywordFilter` | `boolean` | `false` | 是否启用关键词过滤 |
+| `keywords` | `string[]` | `[]` | 关键词列表 |
+| `keywordFilterMode` | `FilterMode` | `blacklist` | 关键词过滤模式：`blacklist` / `whitelist` |
+
+### 响应模式 (ResponseMode)
 
 | 模式 | 说明 |
 |------|------|
-| `constrained` | 有条件约束：非指令消息需要匹配关键词才响应 |
-| `unconstrained` | 无约束：非指令消息全部放行，由后续插件判断 |
+| `constrained` | 约束模式：非指令消息需要匹配关键词才响应 |
+| `unconstrained` | 放行模式：非指令消息全部放行，由后续插件判断 |
 
-#### 过滤模式 (FilterMode)
+### 过滤模式 (FilterMode)
 
 | 模式 | 说明 |
 |------|------|
@@ -102,49 +111,80 @@ plugins:
 
 ## 使用场景
 
-### 场景 1：多个 Bot 处理不同类型的消息
+### 场景 1：功能 Bot + LLM Bot
 
 ```yaml
 bots:
-  # 简单问答 Bot
+  # 简单问答 Bot（约束模式）
   - platform: qq
     selfId: "111"
+    enabled: true
     mode: constrained
+    enableKeywordFilter: true
     keywords: ["天气", "时间", "查询"]
     keywordFilterMode: blacklist
 
-  # LLM 智能对话 Bot
+  # LLM 智能对话 Bot（放行模式）
   - platform: qq
     selfId: "222"
+    enabled: true
     mode: unconstrained
-    commands: []
-    commandFilterMode: blacklist
 ```
 
-### 场景 2：按指令分配 Bot
+### 场景 2：按指令和来源分配 Bot
 
 ```yaml
 bots:
-  # 管理类指令 Bot
+  # 管理员专用 Bot（仅特定群和用户）
   - platform: qq
     selfId: "111"
+    enabled: true
     mode: constrained
+    enableSourceFilter: true
+    sourceFilters:
+      - type: guild
+        value: "987654321"  # 管理员群
+      - type: user
+        value: "123456789"   # 超级用户
+    sourceFilterMode: whitelist
+    enableCommandFilter: true
     commands: ["ban", "kick", "mute"]
     commandFilterMode: whitelist
 
   # 娱乐类指令 Bot
   - platform: qq
     selfId: "222"
+    enabled: true
     mode: constrained
+    enableCommandFilter: true
     commands: ["roll", "draw", "guess"]
     commandFilterMode: whitelist
 
   # LLM 通用 Bot
   - platform: qq
     selfId: "333"
+    enabled: true
     mode: unconstrained
-    commands: []
-    commandFilterMode: blacklist
+```
+
+### 场景 3：多平台 Bot
+
+```yaml
+bots:
+  # QQ Bot - 处理指令和关键词
+  - platform: onebot
+    selfId: "111"
+    enabled: true
+    mode: constrained
+    enableKeywordFilter: true
+    keywords: ["帮助", "查询"]
+    keywordFilterMode: blacklist
+
+  # Discord Bot - 全部放行
+  - platform: discord
+    selfId: "222"
+    enabled: true
+    mode: unconstrained
 ```
 
 ## 命令
@@ -153,6 +193,7 @@ bots:
 |------|------|------|
 | `mc.bots` | `mbc.bots` | 查看可用的 Bot 列表 |
 | `mc.commands` | `mbc.commands` | 查看可用的指令列表 |
+| `mc.copy-commands` | `mbc.copy-commands` | 获取所有指令名称（方便配置时使用） |
 | `mc.config` | `mbc.config` | 查看当前插件配置 |
 
 ## 工作原理
@@ -169,7 +210,7 @@ bots:
 
 ### 本插件的实现原理
 
-本插件通过监听 Koishi 的 `attach-channel` 事件，在消息处理的**最早阶段**介入，动态控制 `assignee` 字段来实现多 Bot 的自动放行。
+本插件通过监听 Koishi 的 `attach-channel` 事件，在消息处理的**最早阶段**介入，动态控制 `assignee` 字段来实现多 Bot 的自动分配。
 
 ```
 用户消息
@@ -182,9 +223,23 @@ bots:
     │
     ▼
 ┌─────────────────────────────────────┐
-│  multi-bot-controller 拦截           │
-│  - 获取当前 Bot 的配置               │
-│  - 判断是否应该响应此消息             │
+│  检查是否有艾特                       │
+│  - 有艾特：只有被艾特的 Bot 响应       │
+│  - 无艾特：继续判断                   │
+└─────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────┐
+│  检查来源过滤                        │
+│  - 是否启用来源过滤                   │
+│  - 是否匹配白/黑名单                  │
+└─────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────┐
+│  判断消息类型                        │
+│  - 指令消息 → 检查指令权限            │
+│  - 非指令消息 → 根据模式判断           │
 └─────────────────────────────────────┘
     │
     ├─────────────────┬─────────────────┐
@@ -202,45 +257,7 @@ bots:
           (指令、LLM、其他功能)
 ```
 
-### 核心代码逻辑
-
-#### 1. 事件监听与 Bot 配置获取
-
-```typescript
-ctx.on('attach-channel', (session) => {
-    // 私聊消息不处理
-    if (session.isDirect) return
-
-    const platform = session.bot.platform
-    const selfId = session.bot.selfId
-
-    // 获取当前 Bot 的配置
-    const botConfig = manager.getBotConfig(platform, selfId)
-
-    // 如果没有配置，不进行干预
-    if (!botConfig) return
-})
-```
-
-#### 2. 响应决策逻辑
-
-```typescript
-// 判断 Bot 是否应该响应
-if (!manager.shouldBotRespond(session, botConfig)) {
-    // 不应该响应：清空 assignee，让其他 Bot 有机会处理
-    if ((channel as any).assignee === selfId) {
-        (channel as any).assignee = ''
-    }
-    return
-}
-
-// 应该响应：设置 assignee 为当前 Bot
-if ((channel as any).assignee !== selfId) {
-    (channel as any).assignee = selfId
-}
-```
-
-#### 3. 响应判断流程
+### 决策流程图
 
 ```
 shouldBotRespond(session, botConfig)
@@ -248,33 +265,49 @@ shouldBotRespond(session, botConfig)
     ▼
 ┌─────────────────────────────────────┐
 │  Bot 是否启用？                      │
-│  (botConfig.enabled)                │
 └─────────────────────────────────────┘
     │
     ├─ 否 ─→ 返回 false (不响应)
     │
     ▼ 是
 ┌─────────────────────────────────────┐
-│  是指令消息？                        │
-│  (session.argv?.command !== null)   │
+│  来源过滤检查                        │
+│  - 未启用 → 通过                     │
+│  - 黑名单模式 → 匹配则阻止            │
+│  - 白名单模式 → 匹配则通过            │
 └─────────────────────────────────────┘
     │
-    ├─ 是 ─→ checkCommandPermission()
-    │         - 检查指令是否在允许列表中
-    │         - 根据 commandFilterMode 判断
+    ▼ 通过
+┌─────────────────────────────────────┐
+│  是指令消息？                        │
+└─────────────────────────────────────┘
+    │
+    ├─ 是 ─→ 检查指令权限
+    │         - 未启用过滤 → 放行
+    │         - 黑名单：在列表中放行
+    │         - 白名单：不在列表中放行
     │
     ▼ 否
 ┌─────────────────────────────────────┐
 │  响应模式？                          │
 └─────────────────────────────────────┘
     │
-    ├─ unconstrained ─→ 返回 true (全部放行)
+    ├─ unconstrained ─→ 放行
     │
     ▼ constrained
-    checkKeywordMatch()
-    - 检查消息是否匹配关键词
-    - 根据 keywordFilterMode 判断
+    检查关键词匹配
+    - 黑名单：匹配则放行
+    - 白名单：不匹配则放行
 ```
+
+### 艾特优先逻辑
+
+当消息中包含艾特（@提及）时：
+
+1. **被艾特的 Bot**：直接接管消息处理，设置 `assignee` 为自己
+2. **未被艾特的 Bot**：放弃处理，清空 `assignee`（如果之前持有）
+
+此逻辑优先级最高，会跳过所有其他过滤判断。
 
 ### 为什么使用 attach-channel 事件？
 
@@ -294,72 +327,6 @@ Koishi 的事件触发顺序：
 - **精确控制**：可以直接修改频道表的 `assignee` 字段
 - **无副作用**：不会影响其他插件的事件监听
 
-### 两种模式的实现差异
-
-#### constrained 模式（有条件约束）
-
-```typescript
-case 'constrained':
-    // 必须匹配关键词才响应
-    const matched = this.checkKeywordMatch(session.content, botConfig)
-    return matched
-```
-
-- 非指令消息必须匹配关键词列表
-- 适用于：特定功能的 Bot（如天气查询、简单问答）
-
-#### unconstrained 模式（无约束）
-
-```typescript
-case 'unconstrained':
-    // 非指令消息全部放行
-    return true
-```
-
-- 非指令消息全部放行，不做关键词过滤
-- 适用于：LLM 智能对话 Bot（让 LLM 自己决定是否响应）
-
-### 指令过滤的实现
-
-两种模式的指令处理逻辑完全相同：
-
-```typescript
-private checkCommandPermission(session: Session, botConfig: BotConfig): boolean {
-    const commandName = session.argv.command.name
-    const { commands, commandFilterMode } = botConfig
-
-    // 空列表 = 根据模式决定默认行为
-    if (commands.length === 0) {
-        return commandFilterMode === 'blacklist'  // blacklist=允许所有
-    }
-
-    // 检查指令是否在列表中
-    const inList = commands.includes(commandName)
-    return commandFilterMode === 'blacklist' ? inList : !inList
-}
-```
-
-### 自动放行的实现
-
-"自动放行"的本质是通过**主动放弃** assignee 来实现的：
-
-1. Bot A 收到消息，检查配置发现不应该响应
-2. Bot A 清空 `assignee`（如果自己是 assignee）
-3. Koishi 继续让其他 Bot 处理这条消息
-4. Bot B 收到消息，检查配置发现应该响应
-5. Bot B 设置 `assignee` 为自己
-6. Bot B 的后续插件正常处理消息
-
-### 多个 Bot 同时满足条件的情况
-
-如果多个 Bot 的配置都允许响应同一条消息：
-
-1. 第一个收到消息的 Bot 会设置 `assignee` 为自己
-2. 后续的 Bot 会检查 `assignee`，发现不是自己，选择跳过
-3. 最终只有一个 Bot 会响应
-
-这样可以避免多个 Bot 同时响应同一条消息导致的重复。
-
 ### 调试模式
 
 启用 `debug: true` 后，插件会输出详细的决策日志：
@@ -367,6 +334,8 @@ private checkCommandPermission(session: Session, botConfig: BotConfig): boolean 
 ```
 [DEBUG] [qq:123456] 频道 987654, 用户 111222: constrained 模式：关键词匹配结果 = true
 [DEBUG] [qq:123456] 频道 987654, 用户 111222: 指令 "help"：在列表中，blacklist 模式 → true
+[DEBUG] [qq:123456] 频道 987654, 用户 111222: 来源过滤：匹配，whitelist 模式 → 通过
+[DEBUG] [qq:123456] 被艾特，接管消息处理
 ```
 
 ## License

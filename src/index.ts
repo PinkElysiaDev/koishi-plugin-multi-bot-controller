@@ -1,28 +1,12 @@
 // src/index.ts
-import { Context, Schema } from 'koishi'
+import { Context } from 'koishi'
 import type { Config as ConfigType, BotConfig } from './types'
-import { createConfig as createConfigSchema, name } from './config'
+import { Config, createConfig as createConfigSchema, name } from './config'
 import { BotManager } from './bot-manager'
 import { Status } from '@satorijs/protocol'
 
 export { BotConfig } from './types'
-export { name } from './config'
-
-// 导出默认静态 Schema
-// 在插件加载后，Schema 会在运行时更新为包含指令列表的动态版本
-export const Config = Schema.intersect([
-    Schema.object({
-        bots: Schema.array(Schema.any())
-            .role('table')
-            .default([])
-            .description('Bot 配置列表（插件加载后将显示可用指令）'),
-    }).description('基础配置'),
-    Schema.object({
-        debug: Schema.boolean()
-            .default(false)
-            .description('启用调试日志'),
-    }).description('调试选项'),
-]) as Schema<ConfigType>
+export { name, Config } from './config'
 
 export function apply(ctx: Context, config: ConfigType) {
     const logger = ctx.logger('multi-bot-controller')
@@ -34,12 +18,7 @@ export function apply(ctx: Context, config: ConfigType) {
     const manager = new BotManager(ctx, bots)
 
     // 更新 Config Schema 为包含指令列表的动态版本
-    // 这样配置界面就能显示可用的指令选项
     const dynamicConfig = createConfigSchema(ctx)
-    ;(Config as any).into = (config: any) => {
-        // 保持配置不变，只是更新 Schema 的定义
-        return config
-    }
     Object.assign(Config, dynamicConfig)
 
     logger.info('Multi-Bot Controller 插件已加载')
@@ -68,6 +47,32 @@ export function apply(ctx: Context, config: ConfigType) {
             return
         }
 
+        // ========================================
+        // 艾特逻辑：如果消息艾特了某个 bot，只有被艾特的 bot 能响应
+        // ========================================
+        const mentionedIds = manager.getMentionedBotIds(session)
+
+        if (mentionedIds.length > 0) {
+            // 消息中有艾特
+            if (mentionedIds.includes(selfId)) {
+                // 当前 bot 被艾特了，直接接管
+                if ((channel as any).assignee !== selfId) {
+                    logger.debug(`[${platform}:${selfId}] 被艾特，接管消息处理`)
+                    ;(channel as any).assignee = selfId
+                }
+            } else {
+                // 当前 bot 没有被艾特，不干预（让被艾特的 bot 处理）
+                if ((channel as any).assignee === selfId) {
+                    logger.debug(`[${platform}:${selfId}] 其他 bot 被艾特，放弃处理`)
+                    ;(channel as any).assignee = ''
+                }
+            }
+            return
+        }
+
+        // ========================================
+        // 无艾特：使用正常的过滤逻辑
+        // ========================================
         // 判断是否应该响应
         if (!manager.shouldBotRespond(session, botConfig)) {
             // 不应该响应
@@ -83,7 +88,6 @@ export function apply(ctx: Context, config: ConfigType) {
         if ((channel as any).assignee !== selfId) {
             logger.debug(`[${platform}:${selfId}] 接管消息处理`)
             ;(channel as any).assignee = selfId
-            // observe 机制会在消息处理结束后自动同步到数据库
         }
     })
 
@@ -140,15 +144,31 @@ export function apply(ctx: Context, config: ConfigType) {
                 output += `## ${bot.platform}:${bot.selfId}\n`
                 output += `- 启用状态: ${bot.enabled ? '已启用' : '已禁用'}\n`
                 output += `- 响应模式: ${bot.mode === 'constrained' ? '约束模式' : '放行模式'}\n`
+
+                // 来源过滤
+                output += `- 来源过滤: ${bot.enableSourceFilter ? '已启用' : '未启用'}\n`
+                if (bot.enableSourceFilter) {
+                    const filters = bot.sourceFilters || []
+                    output += `  - 过滤规则: ${filters.length === 0 ? '（无）' : `${filters.length} 条`}\n`
+                    output += `  - 过滤模式: ${bot.sourceFilterMode === 'blacklist' ? '黑名单' : '白名单'}\n`
+                }
+
+                // 指令过滤
                 output += `- 指令过滤: ${bot.enableCommandFilter ? '已启用' : '未启用（所有指令放行）'}\n`
                 if (bot.enableCommandFilter) {
-                    output += `  - 指令列表: ${bot.commands.length === 0 ? '（全部允许）' : bot.commands.map(c => `\`${c}\``).join(', ')}\n`
+                    const commands = bot.commands || []
+                    output += `  - 指令列表: ${commands.length === 0 ? '（全部允许）' : commands.map(c => `\`${c}\``).join(', ')}\n`
                     output += `  - 过滤模式: ${bot.commandFilterMode === 'blacklist' ? '黑名单' : '白名单'}\n`
                 }
 
+                // 关键词过滤（仅 constrained 模式）
                 if (bot.mode === 'constrained') {
-                    output += `- 关键词: ${bot.keywords.length === 0 ? '（无）' : bot.keywords.map(k => `\`${k}\``).join(', ')}\n`
-                    output += `- 关键词过滤: ${bot.keywordFilterMode === 'blacklist' ? '黑名单' : '白名单'}\n`
+                    output += `- 关键词过滤: ${bot.enableKeywordFilter ? '已启用' : '未启用'}\n`
+                    if (bot.enableKeywordFilter) {
+                        const keywords = bot.keywords || []
+                        output += `  - 关键词: ${keywords.length === 0 ? '（无）' : keywords.map(k => `\`${k}\``).join(', ')}\n`
+                        output += `  - 过滤模式: ${bot.keywordFilterMode === 'blacklist' ? '黑名单' : '白名单'}\n`
+                    }
                 }
 
                 output += '\n'
@@ -177,7 +197,6 @@ export function apply(ctx: Context, config: ConfigType) {
     // 当新 bot 上线时
     ctx.on('login-added', ({ platform, selfId }) => {
         logger.info(`新 Bot 上线: ${platform}:${selfId}`)
-        // 可以在这里自动添加配置提示
         const existing = manager.getBotConfig(platform, selfId)
         if (!existing) {
             logger.warn(`Bot ${platform}:${selfId} 尚未配置，请添加配置以启用控制`)
@@ -193,7 +212,6 @@ export function apply(ctx: Context, config: ConfigType) {
         const onlineBots = bots.filter(b => b.status === Status.ONLINE)
         logger.info(`其中 ${onlineBots.length} 个在线`)
 
-        // 显示配置状态
         const configuredBots = bots.filter(b => manager.getBotConfig(b.platform, b.selfId))
         if (configuredBots.length < bots.length) {
             logger.info(`${bots.length - configuredBots.length} 个 Bot 尚未配置控制规则`)
