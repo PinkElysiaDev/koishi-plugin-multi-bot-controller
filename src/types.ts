@@ -14,8 +14,8 @@ export type SourceFilterType = 'guild' | 'user' | 'channel' | 'private'
 export interface SourceFilter {
     /** 过滤器类型 */
     type: SourceFilterType
-    /** 匹配值（群号/用户ID/频道ID等） */
-    value: string
+    /** 匹配值（群号/用户ID/频道ID等，private 类型时为 boolean） */
+    value: string | boolean
 }
 
 /** 单个 Bot 的配置 */
@@ -31,13 +31,15 @@ export interface BotConfig {
     /** 是否启用指令过滤 */
     enableCommandFilter?: boolean
     /** 允许的指令列表（空=所有） */
-    commands: string[]
+    commands?: string[]
     /** 指令过滤模式 */
-    commandFilterMode: FilterMode
+    commandFilterMode?: FilterMode
+    /** 是否启用关键词过滤 */
+    enableKeywordFilter?: boolean
     /** 关键词列表 */
-    keywords: string[]
+    keywords?: string[]
     /** 关键词过滤模式 */
-    keywordFilterMode: FilterMode
+    keywordFilterMode?: FilterMode
     /** 是否启用来源过滤 */
     enableSourceFilter?: boolean
     /** 来源过滤器列表 */

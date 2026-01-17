@@ -44,6 +44,31 @@ export class BotManager {
     }
 
     /**
+     * 检查消息是否艾特了指定的 bot
+     * @returns true 表示消息艾特了该 bot
+     */
+    isBotMentioned(session: Session, selfId: string): boolean {
+        const elements = session.elements || []
+        return elements.some((el: any) =>
+            el?.type === 'at' && el?.id === selfId
+        )
+    }
+
+    /**
+     * 获取消息中艾特的所有 bot selfId 列表
+     */
+    getMentionedBotIds(session: Session): string[] {
+        const elements = session.elements || []
+        const mentionedIds: string[] = []
+        for (const el of elements) {
+            if ((el as any)?.type === 'at' && (el as any)?.id) {
+                mentionedIds.push((el as any).id)
+            }
+        }
+        return mentionedIds
+    }
+
+    /**
      * 判断 bot 是否应该响应此消息
      * @returns true 表示应该响应（需要 assign），false 表示不响应
      */
@@ -100,16 +125,16 @@ export class BotManager {
             switch (filter.type) {
                 case 'guild':
                     // 群号匹配
-                    return session.guildId === filter.value
+                    return session.guildId === (filter.value as string)
                 case 'user':
                     // 用户 ID 匹配
-                    return session.userId === filter.value
+                    return session.userId === (filter.value as string)
                 case 'channel':
                     // 频道 ID 匹配
-                    return session.channelId === filter.value
+                    return session.channelId === (filter.value as string)
                 case 'private':
-                    // 私聊匹配
-                    return session.isDirect === true
+                    // 私聊匹配，filter.value 为 boolean
+                    return session.isDirect === (filter.value as boolean)
             }
         })
 
@@ -133,7 +158,7 @@ export class BotManager {
         }
 
         const commandName = session.argv.command.name
-        const { enableCommandFilter, commands, commandFilterMode } = botConfig
+        const { enableCommandFilter, commands = [], commandFilterMode = 'blacklist' } = botConfig
 
         // 如果未启用指令过滤，所有指令都放行
         if (!enableCommandFilter) {
@@ -163,7 +188,12 @@ export class BotManager {
      * 仅 constrained 模式使用
      */
     private checkKeywordMatch(content: string, botConfig: BotConfig): boolean {
-        const { keywords, keywordFilterMode } = botConfig
+        const { enableKeywordFilter, keywords = [], keywordFilterMode = 'blacklist' } = botConfig
+
+        // 如果未启用关键词过滤，不响应
+        if (!enableKeywordFilter) {
+            return false
+        }
 
         if (keywords.length === 0) {
             return false
