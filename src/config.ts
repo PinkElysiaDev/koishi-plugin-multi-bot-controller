@@ -207,7 +207,7 @@ export const createConfig = (ctx: Context): Schema<any> => {
 
     return Schema.object({
         bots: Schema.array(createBotConfigSchema(ctx))
-            .role('table')
+            .role('list')
             .default([])
             .description(`Bot 配置列表${commands.length > 0 ? `\n\n检测到 ${commands.length} 个可用指令` : ''}`),
         debug: Schema.boolean()
@@ -298,7 +298,7 @@ const createStaticBotConfigSchema = (): Schema<BotConfig> => {
  */
 export const Config: Schema<{ bots: BotConfig[]; debug: boolean }> = Schema.object({
     bots: Schema.array(createStaticBotConfigSchema())
-        .role('table')
+        .role('list')
         .default([])
         .description('Bot 配置列表'),
     debug: Schema.boolean()
