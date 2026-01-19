@@ -6,25 +6,18 @@ Multi-bot response controller for Koishi. Manage which bot should respond to mes
 
 ## 功能特性
 
-- **两种响应模式**
-  - `constrained`（约束模式）：非指令消息必须匹配关键词才响应，适合功能型 Bot
-  - `unconstrained`（放行模式）：非指令消息全部放行，适合 LLM 智能对话 Bot
-
-- **来源过滤**
-  - 支持按群号、用户 ID、频道 ID、私聊进行过滤
-  - 黑名单/白名单模式
-
-- **指令过滤**
-  - 黑名单模式：只响应列表中的指令
-  - 白名单模式：只响应列表外的指令
-
-- **关键词过滤**（仅 constrained 模式）
-  - 黑名单模式：只响应匹配关键词的消息
-  - 白名单模式：只响应不匹配关键词的消息
+- **独立过滤配置**
+  - 指令过滤：控制响应哪些指令
+  - 来源过滤：按群号、用户 ID、频道 ID、私聊进行过滤
+  - 关键词过滤：控制响应哪些非指令消息
 
 - **艾特优先**
   - 当消息艾特了某个 Bot 时，只有被艾特的 Bot 会响应
-  - 此逻辑优先级最高，通用于任何模式
+  - 此逻辑优先级最高，通用于任何配置
+
+- **动态指令监听**
+  - 自动监听当前实例的所有可用指令
+  - 指令列表会随着插件加载/卸载自动更新
 
 - **辅助命令**
   - `mc.bots` - 查看可用的 Bot 列表
@@ -63,7 +56,15 @@ pnpm add koishi-plugin-multi-bot-controller
 | `platform` | `string` | **必需** | 平台名称（如 `onebot`, `qq`, `discord`） |
 | `selfId` | `string` | **必需** | Bot 账号 ID |
 | `enabled` | `boolean` | `true` | 是否启用此 bot 的响应控制 |
-| `mode` | `ResponseMode` | **必需** | 响应模式：`constrained` / `unconstrained` |
+
+#### 指令过滤
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `enableCommandFilter` | `boolean` | `false` | 是否启用指令过滤 |
+| `commands` | `string[]` | `[]` | 允许响应的指令列表 |
+
+**说明**：启用后，只有列表中的指令会被响应。列表为空时不响应任何指令。
 
 #### 来源过滤
 
@@ -77,17 +78,9 @@ pnpm add koishi-plugin-multi-bot-controller
 - `type: 'guild'` - 按群号过滤，`value` 为群号
 - `type: 'user'` - 按用户 ID 过滤，`value` 为用户 ID
 - `type: 'channel'` - 按频道 ID 过滤，`value` 为频道 ID
-- `type: 'private'` - 私聊过滤，`value` 为是否允许私聊
+- `type: 'private'` - 私聊过滤，`value` 为 `true` 或 `false`
 
-#### 指令过滤
-
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `enableCommandFilter` | `boolean` | `false` | 是否启用指令过滤 |
-| `commands` | `string[]` | `[]` | 允许响应的指令列表 |
-| `commandFilterMode` | `FilterMode` | `blacklist` | 指令过滤模式：`blacklist` / `whitelist` |
-
-#### 关键词过滤（仅 constrained 模式）
+#### 关键词过滤
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
@@ -95,19 +88,14 @@ pnpm add koishi-plugin-multi-bot-controller
 | `keywords` | `string[]` | `[]` | 关键词列表 |
 | `keywordFilterMode` | `FilterMode` | `blacklist` | 关键词过滤模式：`blacklist` / `whitelist` |
 
-### 响应模式 (ResponseMode)
-
-| 模式 | 说明 |
-|------|------|
-| `constrained` | 约束模式：非指令消息需要匹配关键词才响应 |
-| `unconstrained` | 放行模式：非指令消息全部放行，由后续插件判断 |
+**说明**：仅对非指令消息生效。
 
 ### 过滤模式 (FilterMode)
 
 | 模式 | 说明 |
 |------|------|
-| `blacklist` | 黑名单：只响应列表中的内容 |
-| `whitelist` | 白名单：只响应列表外的内容 |
+| `blacklist` | 黑名单：只响应列表中的内容（关键词）或阻止列表中的来源 |
+| `whitelist` | 白名单：只响应列表外的内容（关键词）或只允许列表中的来源 |
 
 ## 使用场景
 
@@ -115,56 +103,51 @@ pnpm add koishi-plugin-multi-bot-controller
 
 ```yaml
 bots:
-  # 简单问答 Bot（约束模式）
+  # 简单问答 Bot（只响应特定关键词）
   - platform: qq
     selfId: "111"
     enabled: true
-    mode: constrained
     enableKeywordFilter: true
     keywords: ["天气", "时间", "查询"]
-    keywordFilterMode: blacklist
+    keywordFilterMode: blacklist  # 黑名单：只响应包含这些关键词的消息
 
-  # LLM 智能对话 Bot（放行模式）
+  # LLM 智能对话 Bot（响应所有消息）
   - platform: qq
     selfId: "222"
     enabled: true
-    mode: unconstrained
+    # 不配置任何过滤，响应所有消息
 ```
 
 ### 场景 2：按指令和来源分配 Bot
 
 ```yaml
 bots:
-  # 管理员专用 Bot（仅特定群和用户）
+  # 管理员专用 Bot（仅特定群和用户的管理指令）
   - platform: qq
     selfId: "111"
     enabled: true
-    mode: constrained
     enableSourceFilter: true
     sourceFilters:
       - type: guild
         value: "987654321"  # 管理员群
       - type: user
         value: "123456789"   # 超级用户
-    sourceFilterMode: whitelist
+    sourceFilterMode: whitelist  # 白名单：只允许这些来源
     enableCommandFilter: true
-    commands: ["ban", "kick", "mute"]
-    commandFilterMode: whitelist
+    commands: ["ban", "kick", "mute"]  # 只响应这些指令
 
   # 娱乐类指令 Bot
   - platform: qq
     selfId: "222"
     enabled: true
-    mode: constrained
     enableCommandFilter: true
-    commands: ["roll", "draw", "guess"]
-    commandFilterMode: whitelist
+    commands: ["roll", "draw", "guess"]  # 只响应这些指令
 
   # LLM 通用 Bot
   - platform: qq
     selfId: "333"
     enabled: true
-    mode: unconstrained
+    # 不配置过滤，响应所有消息
 ```
 
 ### 场景 3：多平台 Bot
@@ -175,16 +158,26 @@ bots:
   - platform: onebot
     selfId: "111"
     enabled: true
-    mode: constrained
     enableKeywordFilter: true
     keywords: ["帮助", "查询"]
     keywordFilterMode: blacklist
 
-  # Discord Bot - 全部放行
+  # Discord Bot - 全部响应
   - platform: discord
     selfId: "222"
     enabled: true
-    mode: unconstrained
+```
+
+### 场景 4：关键词黑名单（过滤敏感词）
+
+```yaml
+bots:
+  - platform: qq
+    selfId: "111"
+    enabled: true
+    enableKeywordFilter: true
+    keywords: ["广告", "推广", "加群"]
+    keywordFilterMode: whitelist  # 白名单：不响应包含这些关键词的消息
 ```
 
 ## 命令
@@ -230,16 +223,22 @@ bots:
     │
     ▼
 ┌─────────────────────────────────────┐
-│  检查来源过滤                        │
-│  - 是否启用来源过滤                   │
-│  - 是否匹配白/黑名单                  │
+│  Bot 是否启用？                      │
+└─────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────┐
+│  来源过滤检查                        │
+│  - 未启用 → 通过                     │
+│  - 黑名单模式 → 匹配则阻止            │
+│  - 白名单模式 → 匹配则通过            │
 └─────────────────────────────────────┘
     │
     ▼
 ┌─────────────────────────────────────┐
 │  判断消息类型                        │
 │  - 指令消息 → 检查指令权限            │
-│  - 非指令消息 → 根据模式判断           │
+│  - 非指令消息 → 检查关键词匹配        │
 └─────────────────────────────────────┘
     │
     ├─────────────────┬─────────────────┐
@@ -284,20 +283,17 @@ shouldBotRespond(session, botConfig)
     │
     ├─ 是 ─→ 检查指令权限
     │         - 未启用过滤 → 放行
-    │         - 黑名单：在列表中放行
-    │         - 白名单：不在列表中放行
+    │         - 列表为空 → 不响应
+    │         - 在列表中 → 响应
+    │         - 不在列表中 → 不响应
     │
     ▼ 否
 ┌─────────────────────────────────────┐
-│  响应模式？                          │
+│  关键词过滤检查                      │
+│  - 未启用 → 不响应                   │
+│  - 黑名单：匹配则响应                │
+│  - 白名单：不匹配则响应              │
 └─────────────────────────────────────┘
-    │
-    ├─ unconstrained ─→ 放行
-    │
-    ▼ constrained
-    检查关键词匹配
-    - 黑名单：匹配则放行
-    - 白名单：不匹配则放行
 ```
 
 ### 艾特优先逻辑
@@ -332,10 +328,10 @@ Koishi 的事件触发顺序：
 启用 `debug: true` 后，插件会输出详细的决策日志：
 
 ```
-[DEBUG] [qq:123456] 频道 987654, 用户 111222: constrained 模式：关键词匹配结果 = true
-[DEBUG] [qq:123456] 频道 987654, 用户 111222: 指令 "help"：在列表中，blacklist 模式 → true
 [DEBUG] [qq:123456] 频道 987654, 用户 111222: 来源过滤：匹配，whitelist 模式 → 通过
+[DEBUG] [qq:123456] 频道 987654, 用户 111222: 指令 "help"：在列表中 → true
 [DEBUG] [qq:123456] 被艾特，接管消息处理
+[DEBUG] [qq:123456] 频道 987654, 用户 111222: 非指令消息：关键词匹配结果 = true
 ```
 
 ## License
