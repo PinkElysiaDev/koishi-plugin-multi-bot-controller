@@ -86,16 +86,16 @@ pnpm add koishi-plugin-multi-bot-controller
 |--------|------|--------|------|
 | `enableKeywordFilter` | `boolean` | `false` | 是否启用关键词过滤 |
 | `keywords` | `string[]` | `[]` | 触发词列表 |
-| `keywordFilterMode` | `FilterMode` | `whitelist` | 关键词过滤模式：`blacklist` / `whitelist` |
+| `keywordFilterMode` | `FilterMode` | `whitelist` | 关键词过滤模式 |
 
-**说明**：仅对非指令消息生效。默认为白名单模式，关键词作为"触发词"使用。
+**说明**：仅对非指令消息生效。
 
 ### 过滤模式 (FilterMode)
 
 | 模式 | 关键词过滤 | 来源过滤 |
 |------|-----------|----------|
-| `whitelist` | 白名单：只响应包含关键词的消息（触发词列表） | 白名单：只允许列表中的来源 |
-| `blacklist` | 黑名单：不响应包含关键词的消息（屏蔽词列表） | 黑名单：阻止列表中的来源 |
+| `whitelist` | 白名单 | 白名单 |
+| `blacklist` | 黑名单 | 黑名单 |
 
 ## 使用场景
 
