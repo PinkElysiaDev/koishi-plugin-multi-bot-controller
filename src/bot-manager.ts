@@ -91,9 +91,7 @@ export class BotManager {
         }
 
         // 3. 非指令处理：检查关键词过滤
-        const matched = this.checkKeywordMatch(session.content || '', botConfig)
-        this.debugLog(session, `非指令消息：关键词匹配结果 = ${matched}`)
-        return matched
+        return this.checkKeywordMatch(session.content || '', botConfig, session)
     }
 
     /**
@@ -181,8 +179,8 @@ export class BotManager {
      * 检查关键词匹配
      * 用于非指令消息的过滤
      */
-    private checkKeywordMatch(content: string, botConfig: BotConfig): boolean {
-        const { enableKeywordFilter, keywords = [], keywordFilterMode = 'blacklist' } = botConfig
+    private checkKeywordMatch(content: string, botConfig: BotConfig, session: Session): boolean {
+        const { enableKeywordFilter, keywords = [], keywordFilterMode = 'whitelist' } = botConfig
 
         // 如果未启用关键词过滤，不响应
         if (!enableKeywordFilter) {
@@ -194,7 +192,15 @@ export class BotManager {
         }
 
         const matched = keywords.some(kw => content.includes(kw))
-        return keywordFilterMode === 'blacklist' ? matched : !matched
+
+        // whitelist（白名单）：只响应包含关键词的消息
+        // blacklist（黑名单）：不响应包含关键词的消息
+        const result = keywordFilterMode === 'whitelist' ? matched : !matched
+
+        this.debugLog(session,
+            `关键词过滤：${matched ? '匹配' : '不匹配'}，${keywordFilterMode} 模式 → ${result ? '响应' : '不响应'}`)
+
+        return result
     }
 
     /** 调试日志 */

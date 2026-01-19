@@ -92,10 +92,10 @@ pnpm add koishi-plugin-multi-bot-controller
 
 ### 过滤模式 (FilterMode)
 
-| 模式 | 说明 |
-|------|------|
-| `blacklist` | 黑名单：只响应列表中的内容（关键词）或阻止列表中的来源 |
-| `whitelist` | 白名单：只响应列表外的内容（关键词）或只允许列表中的来源 |
+| 模式 | 关键词过滤 | 来源过滤 |
+|------|-----------|----------|
+| `blacklist` | 黑名单：不响应包含关键词的消息 | 黑名单：阻止列表中的来源 |
+| `whitelist` | 白名单：只响应包含关键词的消息 | 白名单：只允许列表中的来源 |
 
 ## 使用场景
 
@@ -109,7 +109,7 @@ bots:
     enabled: true
     enableKeywordFilter: true
     keywords: ["天气", "时间", "查询"]
-    keywordFilterMode: blacklist  # 黑名单：只响应包含这些关键词的消息
+    keywordFilterMode: whitelist  # 白名单：只响应包含这些关键词的消息
 
   # LLM 智能对话 Bot（响应所有消息）
   - platform: qq
@@ -160,7 +160,7 @@ bots:
     enabled: true
     enableKeywordFilter: true
     keywords: ["帮助", "查询"]
-    keywordFilterMode: blacklist
+    keywordFilterMode: whitelist  # 白名单：只响应包含这些关键词的消息
 
   # Discord Bot - 全部响应
   - platform: discord
@@ -177,7 +177,7 @@ bots:
     enabled: true
     enableKeywordFilter: true
     keywords: ["广告", "推广", "加群"]
-    keywordFilterMode: whitelist  # 白名单：不响应包含这些关键词的消息
+    keywordFilterMode: blacklist  # 黑名单：不响应包含这些关键词的消息
 ```
 
 ## 命令
@@ -291,8 +291,8 @@ shouldBotRespond(session, botConfig)
 ┌─────────────────────────────────────┐
 │  关键词过滤检查                      │
 │  - 未启用 → 不响应                   │
-│  - 黑名单：匹配则响应                │
-│  - 白名单：不匹配则响应              │
+│  - 白名单：匹配则响应                │
+│  - 黑名单：不匹配则响应              │
 └─────────────────────────────────────┘
 ```
 
