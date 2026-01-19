@@ -85,22 +85,15 @@ export class BotManager {
 
         const isCommand = session.argv?.command !== null
 
-        // 2. 指令处理：两种模式逻辑相同
+        // 2. 指令处理
         if (isCommand) {
             return this.checkCommandPermission(session, botConfig)
         }
 
-        // 3. 非指令处理：根据模式决定
-        switch (botConfig.mode) {
-            case 'unconstrained':
-                this.debugLog(session, 'unconstrained 模式：非指令消息放行')
-                return true
-
-            case 'constrained':
-                const matched = this.checkKeywordMatch(session.content || '', botConfig)
-                this.debugLog(session, `constrained 模式：关键词匹配结果 = ${matched}`)
-                return matched
-        }
+        // 3. 非指令处理：检查关键词过滤
+        const matched = this.checkKeywordMatch(session.content || '', botConfig)
+        this.debugLog(session, `非指令消息：关键词匹配结果 = ${matched}`)
+        return matched
     }
 
     /**
@@ -133,8 +126,11 @@ export class BotManager {
                     // 频道 ID 匹配
                     return session.channelId === (filter.value as string)
                 case 'private':
-                    // 私聊匹配，filter.value 为 boolean
-                    return session.isDirect === (filter.value as boolean)
+                    // 私聊匹配，filter.value 可能是 boolean 或字符串（兼容任意大小写）
+                    const filterValue = typeof filter.value === 'boolean'
+                        ? filter.value
+                        : (filter.value as string).toLowerCase() === 'true'
+                    return session.isDirect === filterValue
             }
         })
 
@@ -148,17 +144,17 @@ export class BotManager {
 
     /**
      * 检查指令权限
-     * 两种模式的指令处理逻辑完全相同
+     * 只响应列表中的指令
      */
     private checkCommandPermission(session: Session, botConfig: BotConfig): boolean {
-        // 修复：确保 command 存在
+        // 确保命令存在
         if (!session.argv?.command) {
             this.debugLog(session, '指令消息但 command 为空，放行')
             return true
         }
 
         const commandName = session.argv.command.name
-        const { enableCommandFilter, commands = [], commandFilterMode = 'blacklist' } = botConfig
+        const { enableCommandFilter, commands = [] } = botConfig
 
         // 如果未启用指令过滤，所有指令都放行
         if (!enableCommandFilter) {
@@ -167,25 +163,23 @@ export class BotManager {
             return true
         }
 
+        // 列表为空 = 不响应任何指令
         if (commands.length === 0) {
-            // 启用过滤但列表为空 = 允许所有指令
-            const result = commandFilterMode === 'blacklist'
             this.debugLog(session,
-                `指令 "${commandName}"：列表为空，${commandFilterMode} 模式 → ${result}`)
-            return result
+                `指令 "${commandName}"：列表为空，不响应`)
+            return false
         }
 
+        // 只响应列表中的指令
         const inList = commands.includes(commandName)
-        const result = commandFilterMode === 'blacklist' ? inList : !inList
-
         this.debugLog(session,
-            `指令 "${commandName}"：${inList ? '在' : '不在'}列表中，${commandFilterMode} 模式 → ${result}`)
-        return result
+            `指令 "${commandName}"：${inList ? '在' : '不在'}列表中 → ${inList}`)
+        return inList
     }
 
     /**
      * 检查关键词匹配
-     * 仅 constrained 模式使用
+     * 用于非指令消息的过滤
      */
     private checkKeywordMatch(content: string, botConfig: BotConfig): boolean {
         const { enableKeywordFilter, keywords = [], keywordFilterMode = 'blacklist' } = botConfig

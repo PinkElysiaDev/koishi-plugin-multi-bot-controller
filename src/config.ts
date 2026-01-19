@@ -17,184 +17,112 @@ function getAvailableCommands(ctx: Context): string[] {
 
 /**
  * 创建来源过滤器 Schema
- * 表格形式，每行包含 type（下拉）和 value（根据 type 动态类型）
  */
 const createSourceFilterSchema = () => {
     return Schema.array(
-        Schema.union([
-            // guild 类型
-            Schema.object({
-                type: Schema.const('guild' as const).description('群号'),
-                value: Schema.string().default('').description('群号'),
-            }),
-            // user 类型
-            Schema.object({
-                type: Schema.const('user' as const).description('用户'),
-                value: Schema.string().default('').description('用户 ID'),
-            }),
-            // channel 类型
-            Schema.object({
-                type: Schema.const('channel' as const).description('频道'),
-                value: Schema.string().default('').description('频道 ID'),
-            }),
-            // private 类型
-            Schema.object({
-                type: Schema.const('private' as const).description('私聊'),
-                value: Schema.boolean().default(true).description('是否允许私聊'),
-            }),
-        ])
-    ).default([]).description('过滤规则列表').role('table')
-}
-
-/**
- * 创建来源过滤配置（Intersect + Union：配置联动 1）
- */
-const createSourceFilterConfig = () => {
-    return Schema.intersect([
         Schema.object({
-            enableSourceFilter: Schema.boolean()
-                .default(false)
-                .description('是否启用来源过滤'),
-        }),
-        Schema.union([
-            Schema.object({
-                enableSourceFilter: Schema.const(true).required(),
-                sourceFilters: createSourceFilterSchema(),
-                sourceFilterMode: Schema.union([
-                    Schema.const('blacklist' as const).description('黑名单：不处理列表中的来源'),
-                    Schema.const('whitelist' as const).description('白名单：只处理列表中的来源'),
-                ]).default('whitelist').description('来源过滤模式'),
-            }),
-            Schema.object({}),
-        ]),
-    ])
+            type: Schema.union([
+                Schema.const('guild' as const).description('群号'),
+                Schema.const('user' as const).description('用户'),
+                Schema.const('channel' as const).description('频道'),
+                Schema.const('private' as const).description('私聊'),
+            ]).description('类型'),
+            value: Schema.string().description('值（私聊填 true/false）'),
+        })
+    ).default([]).description('来源过滤规则列表').role('table')
 }
 
 /**
- * 创建关键词过滤配置（Intersect + Union：配置联动 1）
+ * 创建关键词过滤器 Schema
  */
-const createKeywordFilterConfig = () => {
-    return Schema.intersect([
-        Schema.object({
-            enableKeywordFilter: Schema.boolean()
-                .default(false)
-                .description('是否启用关键词过滤'),
-        }),
-        Schema.union([
-            Schema.object({
-                enableKeywordFilter: Schema.const(true).required(),
-                keywords: Schema.array(Schema.string())
-                    .default([])
-                    .description('关键词列表（每行一个关键词）'),
-                keywordFilterMode: Schema.union([
-                    Schema.const('blacklist' as const).description('黑名单：只响应匹配关键词的消息'),
-                    Schema.const('whitelist' as const).description('白名单：只响应不匹配关键词的消息'),
-                ]).default('blacklist').description('关键词过滤模式'),
-            }),
-            Schema.object({}),
-        ]),
-    ])
+const createKeywordFilterSchema = () => {
+    return Schema.array(Schema.string())
+        .default([])
+        .description('关键词列表')
+        .role('table')
 }
 
 /**
- * 创建指令过滤配置（Intersect + Union：配置联动 1）
+ * 创建指令过滤器 Schema（使用动态引用整个字段）
+ * 这个 schema 引用将在运行时被动态更新
  */
-const createCommandFilterConfig = (ctx: Context) => {
-    const commands = getAvailableCommands(ctx)
-
-    return Schema.intersect([
-        Schema.object({
-            enableCommandFilter: Schema.boolean()
-                .default(false)
-                .description('是否启用指令过滤'),
-        }),
-        Schema.union([
-            Schema.object({
-                enableCommandFilter: Schema.const(true).required(),
-                commands: Schema.array(Schema.union([
-                    Schema.string(),
-                    ...commands.map(name => Schema.const(name)),
-                ]))
-                    .default([])
-                    .description(`允许响应的指令列表${commands.length > 0 ? `（可用指令：${commands.join(', ')}）` : '（插件加载时可检测到指令）'}`)
-                    .role('checkbox'),
-                commandFilterMode: Schema.union([
-                    Schema.const('blacklist' as const).description('黑名单：只响应列表中的指令'),
-                    Schema.const('whitelist' as const).description('白名单：响应列表外的指令'),
-                ]).default('blacklist').description('指令过滤模式'),
-            }),
-            Schema.object({}),
-        ]),
-    ])
+const createCommandFilterSchema = () => {
+    return Schema.dynamic('multi-bot-controller.commandFilter')
+        .description('允许响应的指令列表（自动监听当前实例可用指令并更新）')
 }
 
 /**
- * 创建约束模式配置 Schema
+ * 创建单个 Bot 配置 Schema
  */
-const createConstrainedModeConfig = (ctx: Context) => {
-    return Schema.intersect([
-        // 来源过滤
-        createSourceFilterConfig(),
-
-        // 关键词过滤
-        createKeywordFilterConfig(),
-
-        // 指令过滤
-        createCommandFilterConfig(ctx),
-    ])
-}
-
-/**
- * 创建无约束模式配置 Schema
- */
-const createUnconstrainedModeConfig = (ctx: Context) => {
-    return Schema.intersect([
-        // 来源过滤
-        createSourceFilterConfig(),
-
-        // 指令过滤
-        createCommandFilterConfig(ctx),
-    ])
-}
-
-/**
- * 创建单个 Bot 配置 Schema（Intersect + Union：配置联动 2）
- */
-const createBotConfigSchema = (ctx: Context): Schema<BotConfig> => {
+const createBotConfigSchema = (): Schema<BotConfig> => {
     return Schema.intersect([
         // 基础配置
         Schema.object({
             platform: Schema.string()
-                .description('Bot 平台名称（如 onebot, qq, discord）')
+                .description('**Bot 平台名称**（如 onebot, qq, discord）')
                 .required(),
             selfId: Schema.string()
-                .description('Bot 账号 ID')
+                .description('**Bot 账号 ID**')
                 .required(),
             enabled: Schema.boolean()
                 .default(true)
                 .description('是否启用此 bot 的响应控制'),
-            mode: Schema.union([
-                Schema.const('constrained' as const)
-                    .description('[约束模式] 非指令消息必须匹配关键词才响应，适合功能型 Bot'),
-                Schema.const('unconstrained' as const)
-                    .description('[放行模式] 非指令消息全部放行，适合 LLM 智能对话 Bot'),
-            ]).required().description('响应模式'),
-        }).description('基础配置'),
+        }),
 
-        // 模式联动配置
-        Schema.union([
-            Schema.intersect([
+        // 指令过滤
+        Schema.intersect([
+            Schema.object({
+                enableCommandFilter: Schema.boolean()
+                    .default(false)
+                    .description('是否启用指令过滤'),
+            }),
+            Schema.union([
                 Schema.object({
-                    mode: Schema.const('constrained' as const).required(),
+                    enableCommandFilter: Schema.const(true).required(),
+                    commands: createCommandFilterSchema(),
                 }),
-                createConstrainedModeConfig(ctx),
-            ]).description('约束模式配置'),
-            Schema.intersect([
+                Schema.object({}),
+            ]),
+        ]),
+
+        // 来源过滤
+        Schema.intersect([
+            Schema.object({
+                enableSourceFilter: Schema.boolean()
+                    .default(false)
+                    .description('是否启用来源过滤'),
+            }),
+            Schema.union([
                 Schema.object({
-                    mode: Schema.const('unconstrained' as const).required(),
+                    enableSourceFilter: Schema.const(true).required(),
+                    sourceFilters: createSourceFilterSchema(),
+                    sourceFilterMode: Schema.union([
+                        Schema.const('blacklist' as const).description('黑名单'),
+                        Schema.const('whitelist' as const).description('白名单'),
+                    ]).default('whitelist').description('来源过滤模式'),
                 }),
-                createUnconstrainedModeConfig(ctx),
-            ]).description('放行模式配置'),
+                Schema.object({}),
+            ]),
+        ]),
+
+        // 关键词过滤
+        Schema.intersect([
+            Schema.object({
+                enableKeywordFilter: Schema.boolean()
+                    .default(false)
+                    .description('是否启用关键词过滤'),
+            }),
+            Schema.union([
+                Schema.object({
+                    enableKeywordFilter: Schema.const(true).required(),
+                    keywords: createKeywordFilterSchema(),
+                    keywordFilterMode: Schema.union([
+                        Schema.const('blacklist' as const).description('黑名单'),
+                        Schema.const('whitelist' as const).description('白名单'),
+                    ]).default('whitelist').description('关键词过滤模式'),
+                }),
+                Schema.object({}),
+            ]),
         ]),
     ]) as Schema<BotConfig>
 }
@@ -205,106 +133,148 @@ const createBotConfigSchema = (ctx: Context): Schema<BotConfig> => {
 export const createConfig = (ctx: Context): Schema<any> => {
     const commands = getAvailableCommands(ctx)
 
-    return Schema.object({
-        bots: Schema.array(createBotConfigSchema(ctx))
-            .role('list')
-            .default([])
-            .description(`Bot 配置列表${commands.length > 0 ? `\n\n检测到 ${commands.length} 个可用指令` : ''}`),
-        debug: Schema.boolean()
-            .default(false)
-            .description('启用调试日志（输出详细的决策过程）'),
-    })
-}
-
-/**
- * 静态的指令过滤配置 Schema（不依赖 ctx，用于顶层导出）
- */
-const createStaticCommandFilterConfig = () => {
     return Schema.intersect([
         Schema.object({
-            enableCommandFilter: Schema.boolean()
-                .default(false)
-                .description('是否启用指令过滤'),
+            bots: Schema.array(createBotConfigSchema())
+                .role('list')
+                .default([])
+                .description(`Bot 配置列表${commands.length > 0 ? `\n\n检测到 ${commands.length} 个可用指令` : ''}`),
         }),
-        Schema.union([
-            Schema.object({
-                enableCommandFilter: Schema.const(true).required(),
-                commands: Schema.array(Schema.string())
-                    .default([])
-                    .description('允许响应的指令列表（插件加载后会自动填充可用指令）')
-                    .role('checkbox'),
-                commandFilterMode: Schema.union([
-                    Schema.const('blacklist' as const).description('黑名单：只响应列表中的指令'),
-                    Schema.const('whitelist' as const).description('白名单：响应列表外的指令'),
-                ]).default('blacklist').description('指令过滤模式'),
-            }),
-            Schema.object({}),
-        ]),
+        Schema.object({
+            debug: Schema.boolean()
+                .default(false)
+                .description('启用调试日志'),
+        }).description('其他设置'),
     ])
 }
 
 /**
- * 静态的单个 Bot 配置 Schema（不依赖 ctx，用于顶层导出）
+ * 静态的来源过滤器 Schema
+ */
+const createStaticSourceFilterSchema = () => {
+    return Schema.array(
+        Schema.object({
+            type: Schema.union([
+                Schema.const('guild' as const).description('群号'),
+                Schema.const('user' as const).description('用户'),
+                Schema.const('channel' as const).description('频道'),
+                Schema.const('private' as const).description('私聊'),
+            ]).description('类型'),
+            value: Schema.string().description('值（私聊填 true/false）'),
+        })
+    ).default([]).description('来源过滤规则列表').role('table')
+}
+
+/**
+ * 静态的关键词过滤器 Schema
+ */
+const createStaticKeywordFilterSchema = () => {
+    return Schema.array(Schema.string())
+        .default([])
+        .description('关键词列表')
+        .role('table')
+}
+
+/**
+ * 静态的指令过滤器 Schema（使用动态引用整个字段）
+ */
+const createStaticCommandFilterSchema = () => {
+    return Schema.dynamic('multi-bot-controller.commandFilter')
+        .description('允许响应的指令列表（自动监听当前实例可用指令并更新）')
+}
+
+/**
+ * 静态的单个 Bot 配置 Schema
  */
 const createStaticBotConfigSchema = (): Schema<BotConfig> => {
     return Schema.intersect([
         // 基础配置
         Schema.object({
             platform: Schema.string()
-                .description('Bot 平台名称（如 onebot, qq, discord）')
+                .description('**Bot 平台名称**（如 onebot, qq, discord）')
                 .required(),
             selfId: Schema.string()
-                .description('Bot 账号 ID')
+                .description('**Bot 账号 ID**')
                 .required(),
             enabled: Schema.boolean()
                 .default(true)
                 .description('是否启用此 bot 的响应控制'),
-            mode: Schema.union([
-                Schema.const('constrained' as const)
-                    .description('[约束模式] 非指令消息必须匹配关键词才响应，适合功能型 Bot'),
-                Schema.const('unconstrained' as const)
-                    .description('[放行模式] 非指令消息全部放行，适合 LLM 智能对话 Bot'),
-            ]).required().description('响应模式'),
-        }).description('基础配置'),
+        }),
 
-        // 模式联动配置
-        Schema.union([
-            Schema.intersect([
+        // 指令过滤
+        Schema.intersect([
+            Schema.object({
+                enableCommandFilter: Schema.boolean()
+                    .default(false)
+                    .description('是否启用指令过滤'),
+            }),
+            Schema.union([
                 Schema.object({
-                    mode: Schema.const('constrained' as const).required(),
+                    enableCommandFilter: Schema.const(true).required(),
+                    commands: createStaticCommandFilterSchema(),
                 }),
-                Schema.intersect([
-                    createSourceFilterConfig(),
-                    createKeywordFilterConfig(),
-                    createStaticCommandFilterConfig(),
-                ]),
-            ]).description('约束模式配置'),
-            Schema.intersect([
+                Schema.object({}),
+            ]),
+        ]),
+
+        // 来源过滤
+        Schema.intersect([
+            Schema.object({
+                enableSourceFilter: Schema.boolean()
+                    .default(false)
+                    .description('是否启用来源过滤'),
+            }),
+            Schema.union([
                 Schema.object({
-                    mode: Schema.const('unconstrained' as const).required(),
+                    enableSourceFilter: Schema.const(true).required(),
+                    sourceFilters: createStaticSourceFilterSchema(),
+                    sourceFilterMode: Schema.union([
+                        Schema.const('blacklist' as const).description('黑名单'),
+                        Schema.const('whitelist' as const).description('白名单'),
+                    ]).default('whitelist').description('来源过滤模式'),
                 }),
-                Schema.intersect([
-                    createSourceFilterConfig(),
-                    createStaticCommandFilterConfig(),
-                ]),
-            ]).description('放行模式配置'),
+                Schema.object({}),
+            ]),
+        ]),
+
+        // 关键词过滤
+        Schema.intersect([
+            Schema.object({
+                enableKeywordFilter: Schema.boolean()
+                    .default(false)
+                    .description('是否启用关键词过滤'),
+            }),
+            Schema.union([
+                Schema.object({
+                    enableKeywordFilter: Schema.const(true).required(),
+                    keywords: createStaticKeywordFilterSchema(),
+                    keywordFilterMode: Schema.union([
+                        Schema.const('blacklist' as const).description('黑名单'),
+                        Schema.const('whitelist' as const).description('白名单'),
+                    ]).default('whitelist').description('关键词过滤模式'),
+                }),
+                Schema.object({}),
+            ]),
         ]),
     ]) as Schema<BotConfig>
 }
 
 /**
- * 静态的插件配置 Schema（不依赖 ctx，用于顶层导出）
- * 这是插件入口必须导出的 Config，Koishi 会使用它来初始化配置界面
+ * 静态的插件配置 Schema
  */
-export const Config: Schema<{ bots: BotConfig[]; debug: boolean }> = Schema.object({
-    bots: Schema.array(createStaticBotConfigSchema())
-        .role('list')
-        .default([])
-        .description('Bot 配置列表'),
-    debug: Schema.boolean()
-        .default(false)
-        .description('启用调试日志（输出详细的决策过程）'),
-})
+export const Config: Schema<any> = Schema.intersect([
+    Schema.object({
+        bots: Schema.array(createStaticBotConfigSchema())
+            .role('list')
+            .default([])
+            .description('Bot 配置列表'),
+    }),
+    Schema.object({
+        debug: Schema.boolean()
+            .default(false)
+            .description('启用调试日志'),
+    }).description('其他设置'),
+])
 
 // 静态导出（用于类型检查）
 export const name = 'multi-bot-controller'

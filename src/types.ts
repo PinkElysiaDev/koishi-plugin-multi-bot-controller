@@ -1,9 +1,6 @@
 // src/types.ts
 import { Status } from '@satorijs/protocol'
 
-/** Bot 响应模式 */
-export type ResponseMode = 'constrained' | 'unconstrained'
-
 /** 过滤模式 */
 export type FilterMode = 'blacklist' | 'whitelist'
 
@@ -26,14 +23,10 @@ export interface BotConfig {
     selfId: string
     /** 是否启用此 bot 的控制 */
     enabled: boolean
-    /** 响应模式 */
-    mode: ResponseMode
     /** 是否启用指令过滤 */
     enableCommandFilter?: boolean
     /** 允许的指令列表（空=所有） */
     commands?: string[]
-    /** 指令过滤模式 */
-    commandFilterMode?: FilterMode
     /** 是否启用关键词过滤 */
     enableKeywordFilter?: boolean
     /** 关键词列表 */

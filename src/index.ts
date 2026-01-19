@@ -1,7 +1,6 @@
 // src/index.ts
-import { Context } from 'koishi'
-import type { Config as ConfigType, BotConfig } from './types'
-import { Config, createConfig as createConfigSchema, name } from './config'
+import { Context, Schema } from 'koishi'
+import type { Config as ConfigType } from './types'
 import { BotManager } from './bot-manager'
 import { Status } from '@satorijs/protocol'
 
@@ -17,9 +16,74 @@ export function apply(ctx: Context, config: ConfigType) {
     // 创建 Bot 管理服务
     const manager = new BotManager(ctx, bots)
 
-    // 更新 Config Schema 为包含指令列表的动态版本
-    const dynamicConfig = createConfigSchema(ctx)
-    Object.assign(Config, dynamicConfig)
+    // ========================================
+    // 动态指令监听服务
+    // ========================================
+    class CommandsService {
+        // 当前指令列表缓存
+        private commandList: string[] = []
+
+        constructor(private ctx: Context) {
+            this.scanCommands()
+            // 监听插件生命周期事件
+            this.ctx.on('internal/runtime', (runtime) => {
+                logger.debug(`插件加载: ${runtime.plugin?.name || 'Anonymous'}`)
+                this.scanCommands()
+            })
+            // 监听指令变化
+            this.ctx.on('command-added', () => this.scanCommands())
+            this.ctx.on('command-removed', () => this.scanCommands())
+            this.ctx.on('command-updated', () => this.scanCommands())
+        }
+
+        /** 扫描当前所有可用指令 */
+        private scanCommands() {
+            const commandMap = (this.ctx.$commander as any)?._commandMap
+            if (!commandMap) {
+                this.commandList = []
+                return
+            }
+
+            const commands = Array.from(commandMap.values())
+                .filter((cmd: any) => cmd.name && cmd.name !== '' && !cmd.name.includes('.'))
+                .map((cmd: any) => cmd.name)
+                .sort()
+
+            this.commandList = commands
+            logger.debug(`指令列表已更新，共 ${commands.length} 个指令`)
+
+            // 更新配置 Schema
+            this.updateConfigSchema()
+        }
+
+        /** 更新配置 Schema */
+        private updateConfigSchema() {
+            const commands = this.commandList
+
+            // 动态更新指令过滤 Schema（完整的 array schema，带 .role('select')）
+            if (commands.length === 0) {
+                // 没有指令时使用简单的 string array
+                ctx.schema.set('multi-bot-controller.commandFilter', Schema.array(Schema.string())
+                    .default([])
+                    .description('允许响应的指令列表（暂无可用指令）'))
+                return
+            }
+
+            // 创建带复选菜单的指令选择 schema
+            const commandSchema = Schema.array(Schema.union(commands.map(name =>
+                Schema.const(name).description(name)
+            )))
+                .default([])
+                .description(`允许响应的指令列表（共 ${commands.length} 个可用指令）`)
+                .role('select')
+
+            ctx.schema.set('multi-bot-controller.commandFilter', commandSchema)
+            logger.debug(`指令 Schema 已更新，共 ${commands.length} 个选项`)
+        }
+    }
+
+    // 创建指令服务（触发指令扫描和 schema 更新）
+    new CommandsService(ctx)
 
     logger.info('Multi-Bot Controller 插件已加载')
     logger.info(`当前配置了 ${bots.length} 个 bot`)
@@ -143,7 +207,6 @@ export function apply(ctx: Context, config: ConfigType) {
             for (const bot of bots) {
                 output += `## ${bot.platform}:${bot.selfId}\n`
                 output += `- 启用状态: ${bot.enabled ? '已启用' : '已禁用'}\n`
-                output += `- 响应模式: ${bot.mode === 'constrained' ? '约束模式' : '放行模式'}\n`
 
                 // 来源过滤
                 output += `- 来源过滤: ${bot.enableSourceFilter ? '已启用' : '未启用'}\n`
@@ -154,21 +217,18 @@ export function apply(ctx: Context, config: ConfigType) {
                 }
 
                 // 指令过滤
-                output += `- 指令过滤: ${bot.enableCommandFilter ? '已启用' : '未启用（所有指令放行）'}\n`
+                output += `- 指令过滤: ${bot.enableCommandFilter ? '已启用' : '未启用'}\n`
                 if (bot.enableCommandFilter) {
                     const commands = bot.commands || []
-                    output += `  - 指令列表: ${commands.length === 0 ? '（全部允许）' : commands.map(c => `\`${c}\``).join(', ')}\n`
-                    output += `  - 过滤模式: ${bot.commandFilterMode === 'blacklist' ? '黑名单' : '白名单'}\n`
+                    output += `  - 指令列表: ${commands.length === 0 ? '（无）' : commands.map(c => `\`${c}\``).join(', ')}\n`
                 }
 
-                // 关键词过滤（仅 constrained 模式）
-                if (bot.mode === 'constrained') {
-                    output += `- 关键词过滤: ${bot.enableKeywordFilter ? '已启用' : '未启用'}\n`
-                    if (bot.enableKeywordFilter) {
-                        const keywords = bot.keywords || []
-                        output += `  - 关键词: ${keywords.length === 0 ? '（无）' : keywords.map(k => `\`${k}\``).join(', ')}\n`
-                        output += `  - 过滤模式: ${bot.keywordFilterMode === 'blacklist' ? '黑名单' : '白名单'}\n`
-                    }
+                // 关键词过滤
+                output += `- 关键词过滤: ${bot.enableKeywordFilter ? '已启用' : '未启用'}\n`
+                if (bot.enableKeywordFilter) {
+                    const keywords = bot.keywords || []
+                    output += `  - 关键词: ${keywords.length === 0 ? '（无）' : keywords.map(k => `\`${k}\``).join(', ')}\n`
+                    output += `  - 过滤模式: ${bot.keywordFilterMode === 'blacklist' ? '黑名单' : '白名单'}\n`
                 }
 
                 output += '\n'
