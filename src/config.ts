@@ -262,7 +262,7 @@ const createStaticBotConfigSchema = (): Schema<BotConfig> => {
 /**
  * 静态的插件配置 Schema
  */
-export const Config: Schema<any> = Schema.intersect([
+export const Config = Schema.intersect([
     Schema.object({
         bots: Schema.array(createStaticBotConfigSchema())
             .role('list')
