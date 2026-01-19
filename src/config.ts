@@ -118,8 +118,8 @@ const createBotConfigSchema = (): Schema<BotConfig> => {
                     keywords: createKeywordFilterSchema(),
                     keywordFilterMode: Schema.union([
                         Schema.const('blacklist' as const).description('黑名单：不响应包含关键词的消息'),
-                        Schema.const('whitelist' as const).description('白名单：只响应包含关键词的消息'),
-                    ]).default('blacklist').description('关键词过滤模式'),
+                        Schema.const('whitelist' as const).description('白名单：只响应包含关键词的消息（触发词列表）'),
+                    ]).default('whitelist').description('关键词过滤模式'),
                 }),
                 Schema.object({}),
             ]),
@@ -250,8 +250,8 @@ const createStaticBotConfigSchema = (): Schema<BotConfig> => {
                     keywords: createStaticKeywordFilterSchema(),
                     keywordFilterMode: Schema.union([
                         Schema.const('blacklist' as const).description('黑名单：不响应包含关键词的消息'),
-                        Schema.const('whitelist' as const).description('白名单：只响应包含关键词的消息'),
-                    ]).default('blacklist').description('关键词过滤模式'),
+                        Schema.const('whitelist' as const).description('白名单：只响应包含关键词的消息（触发词列表）'),
+                    ]).default('whitelist').description('关键词过滤模式'),
                 }),
                 Schema.object({}),
             ]),

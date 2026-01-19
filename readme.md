@@ -85,17 +85,17 @@ pnpm add koishi-plugin-multi-bot-controller
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `enableKeywordFilter` | `boolean` | `false` | 是否启用关键词过滤 |
-| `keywords` | `string[]` | `[]` | 关键词列表 |
-| `keywordFilterMode` | `FilterMode` | `blacklist` | 关键词过滤模式：`blacklist` / `whitelist` |
+| `keywords` | `string[]` | `[]` | 触发词列表 |
+| `keywordFilterMode` | `FilterMode` | `whitelist` | 关键词过滤模式：`blacklist` / `whitelist` |
 
-**说明**：仅对非指令消息生效。
+**说明**：仅对非指令消息生效。默认为白名单模式，关键词作为"触发词"使用。
 
 ### 过滤模式 (FilterMode)
 
 | 模式 | 关键词过滤 | 来源过滤 |
 |------|-----------|----------|
-| `blacklist` | 黑名单：不响应包含关键词的消息 | 黑名单：阻止列表中的来源 |
-| `whitelist` | 白名单：只响应包含关键词的消息 | 白名单：只允许列表中的来源 |
+| `whitelist` | 白名单：只响应包含关键词的消息（触发词列表） | 白名单：只允许列表中的来源 |
+| `blacklist` | 黑名单：不响应包含关键词的消息（屏蔽词列表） | 黑名单：阻止列表中的来源 |
 
 ## 使用场景
 
@@ -168,7 +168,7 @@ bots:
     enabled: true
 ```
 
-### 场景 4：关键词黑名单（过滤敏感词）
+### 场景 4：关键词黑名单（屏蔽某些消息）
 
 ```yaml
 bots:
@@ -177,7 +177,7 @@ bots:
     enabled: true
     enableKeywordFilter: true
     keywords: ["广告", "推广", "加群"]
-    keywordFilterMode: blacklist  # 黑名单：不响应包含这些关键词的消息
+    keywordFilterMode: blacklist  # 黑名单：屏蔽包含这些关键词的消息
 ```
 
 ## 命令
@@ -291,7 +291,7 @@ shouldBotRespond(session, botConfig)
 ┌─────────────────────────────────────┐
 │  关键词过滤检查                      │
 │  - 未启用 → 不响应                   │
-│  - 白名单：匹配则响应                │
+│  - 白名单（默认）：匹配则响应         │
 │  - 黑名单：不匹配则响应              │
 └─────────────────────────────────────┘
 ```
