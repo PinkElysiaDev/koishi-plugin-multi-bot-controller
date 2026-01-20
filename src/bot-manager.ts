@@ -1,7 +1,6 @@
 // src/bot-manager.ts
 import { Context, Session } from 'koishi'
-import { Status } from '@satorijs/protocol'
-import { BotConfig, AvailableBot, AvailableCommand } from './types'
+import { BotConfig } from './types'
 
 export class BotManager {
     private logger: ReturnType<Context['logger']>
@@ -13,44 +12,10 @@ export class BotManager {
         this.logger = ctx.logger('multi-bot-controller')
     }
 
-    /** 获取所有可用的 bots */
-    getAvailableBots(): AvailableBot[] {
-        return this.ctx.bots.map(bot => ({
-            platform: bot.platform,
-            selfId: bot.selfId,
-            status: bot.status,
-        }))
-    }
-
-    /** 获取所有可用的指令 */
-    getAvailableCommands(): AvailableCommand[] {
-        const commandMap = (this.ctx.$commander as any)._commandMap
-        if (!commandMap) return []
-
-        return Array.from(commandMap.values())
-            .filter((cmd: any) => cmd.name && cmd.name !== '' && !cmd.name.includes('.'))
-            .map((cmd: any) => ({
-                name: cmd.name,
-                description: cmd.description || '',
-            }))
-            .sort((a, b) => a.name.localeCompare(b.name))
-    }
-
     /** 获取指定 bot 的配置 */
     getBotConfig(platform: string, selfId: string): BotConfig | undefined {
         return this.configs.find(
             bot => bot.platform === platform && bot.selfId === selfId
-        )
-    }
-
-    /**
-     * 检查消息是否艾特了指定的 bot
-     * @returns true 表示消息艾特了该 bot
-     */
-    isBotMentioned(session: Session, selfId: string): boolean {
-        const elements = session.elements || []
-        return elements.some((el: any) =>
-            el?.type === 'at' && el?.id === selfId
         )
     }
 
@@ -115,16 +80,12 @@ export class BotManager {
         const matched = sourceFilters.some(filter => {
             switch (filter.type) {
                 case 'guild':
-                    // 群号匹配
                     return session.guildId === (filter.value as string)
                 case 'user':
-                    // 用户 ID 匹配
                     return session.userId === (filter.value as string)
                 case 'channel':
-                    // 频道 ID 匹配
                     return session.channelId === (filter.value as string)
                 case 'private':
-                    // 私聊匹配，filter.value 可能是 boolean 或字符串（兼容任意大小写）
                     const filterValue = typeof filter.value === 'boolean'
                         ? filter.value
                         : (filter.value as string).toLowerCase() === 'true'
@@ -145,34 +106,23 @@ export class BotManager {
      * 只响应列表中的指令
      */
     private checkCommandPermission(session: Session, botConfig: BotConfig): boolean {
-        // 确保命令存在
         if (!session.argv?.command) {
-            this.debugLog(session, '指令消息但 command 为空，放行')
             return true
         }
 
         const commandName = session.argv.command.name
         const { enableCommandFilter, commands = [] } = botConfig
 
-        // 如果未启用指令过滤，所有指令都放行
         if (!enableCommandFilter) {
-            this.debugLog(session,
-                `指令 "${commandName}"：未启用指令过滤，放行`)
             return true
         }
 
-        // 列表为空 = 不响应任何指令
         if (commands.length === 0) {
-            this.debugLog(session,
-                `指令 "${commandName}"：列表为空，不响应`)
             return false
         }
 
-        // 只响应列表中的指令
-        const inList = commands.includes(commandName)
-        this.debugLog(session,
-            `指令 "${commandName}"：${inList ? '在' : '不在'}列表中 → ${inList}`)
-        return inList
+        const validCommands = commands.filter(c => c !== '')
+        return validCommands.includes(commandName)
     }
 
     /**
@@ -182,7 +132,6 @@ export class BotManager {
     private checkKeywordMatch(content: string, botConfig: BotConfig, session: Session): boolean {
         const { enableKeywordFilter, keywords = [], keywordFilterMode = 'whitelist' } = botConfig
 
-        // 如果未启用关键词过滤，不响应
         if (!enableKeywordFilter) {
             return false
         }
@@ -192,15 +141,7 @@ export class BotManager {
         }
 
         const matched = keywords.some(kw => content.includes(kw))
-
-        // whitelist（白名单）：只响应包含关键词的消息
-        // blacklist（黑名单）：不响应包含关键词的消息
-        const result = keywordFilterMode === 'whitelist' ? matched : !matched
-
-        this.debugLog(session,
-            `关键词过滤：${matched ? '匹配' : '不匹配'}，${keywordFilterMode} 模式 → ${result ? '响应' : '不响应'}`)
-
-        return result
+        return keywordFilterMode === 'whitelist' ? matched : !matched
     }
 
     /** 调试日志 */
@@ -209,11 +150,5 @@ export class BotManager {
             `[${session.platform}:${session.selfId}] ` +
             `频道 ${session.channelId}, 用户 ${session.userId}: ${message}`
         )
-    }
-
-    /** 更新配置列表 */
-    updateConfigs(configs: BotConfig[]) {
-        this.configs = configs
-        this.logger.info(`配置已更新，当前 ${configs.length} 个 bot 配置`)
     }
 }

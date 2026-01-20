@@ -2,207 +2,145 @@
 import { Context, Schema } from 'koishi'
 import type { Config as ConfigType } from './types'
 import { BotManager } from './bot-manager'
-import { Status } from '@satorijs/protocol'
 
 export { BotConfig } from './types'
 export { name, Config } from './config'
 
+export const usage = `
+---
+
+## 使用说明
+
+本插件用于管理多 Bot 场景下的消息响应行为。
+
+### 工作原理
+
+当 Bot 的消息满足响应条件时，插件会自动修改该消息的 \`assignee\` 字段，使其指向应该响应的 Bot。这样可以实现：
+- 指令分配：不同 Bot 响应不同指令
+- 来源过滤：按群/用户/频道分配 Bot
+- 关键词过滤：按关键词分配 Bot
+- 艾特优先：被艾特的 Bot 优先响应
+
+### 兼容性说明
+
+- **adapter-onebot 多开**: 使用 adapter-onebot 多开时无需修改默认的服务器监听路径
+- **Bug 反馈**: 如有任何问题请在 [GitHub](https://github.com/MissPinkElf/koishi-plugin-multi-bot-controller) 提交 Issue
+
+---`
+
 export function apply(ctx: Context, config: ConfigType) {
     const logger = ctx.logger('multi-bot-controller')
-
-    // 确保 bots 数组存在
     const bots = config.bots || []
-
-    // 创建 Bot 管理服务
     const manager = new BotManager(ctx, bots)
 
     // ========================================
     // 动态指令监听服务
     // ========================================
     class CommandsService {
-        // 当前指令列表缓存
         private commandList: string[] = []
+        private debounceTimer: NodeJS.Timeout | null = null
 
         constructor(private ctx: Context) {
-            // 延迟初始化，确保配置系统已就绪
-            setTimeout(() => {
-                this.scanCommands()
-            }, 1000)
-
-            // 监听插件生命周期事件
-            this.ctx.on('internal/runtime', (runtime) => {
-                logger.debug(`插件加载: ${runtime.plugin?.name || 'Anonymous'}`)
-                setTimeout(() => this.scanCommands(), 100)
-            })
-            // 监听指令变化
-            this.ctx.on('command-added', () => this.scanCommands())
-            this.ctx.on('command-removed', () => this.scanCommands())
-            this.ctx.on('command-updated', () => this.scanCommands())
+            setTimeout(() => this.scanCommands(), 1000)
+            this.ctx.on('internal/runtime', () => this.scheduleScan())
+            this.ctx.on('command-added', () => this.scheduleScan())
+            this.ctx.on('command-removed', () => this.scheduleScan())
+            this.ctx.on('command-updated', () => this.scheduleScan())
         }
 
-        /** 扫描当前所有可用指令 */
+        private scheduleScan() {
+            if (this.debounceTimer) clearTimeout(this.debounceTimer)
+            this.debounceTimer = setTimeout(() => this.scanCommands(), 200)
+        }
+
         private scanCommands() {
-            const commandMap = (this.ctx.$commander as any)?._commandMap
-            if (!commandMap) {
+            const commandList = (this.ctx.$commander as any)?._commandList
+            if (!commandList) {
                 this.commandList = []
                 this.updateConfigSchema()
                 return
             }
 
-            const commands = Array.from(commandMap.values())
+            const commands = commandList
                 .filter((cmd: any) => cmd.name && cmd.name !== '' && !cmd.name.includes('.'))
                 .map((cmd: any) => cmd.name)
                 .sort()
 
-            this.commandList = commands
-            logger.debug(`指令列表已更新，共 ${commands.length} 个指令`)
-
-            // 更新配置 Schema
-            this.updateConfigSchema()
+            if (JSON.stringify(this.commandList) !== JSON.stringify(commands)) {
+                this.commandList = commands
+                logger.debug(`指令列表已更新，共 ${commands.length} 个`)
+                this.updateConfigSchema()
+            }
         }
 
-        /** 更新配置 Schema */
         private updateConfigSchema() {
             const commands = this.commandList
 
-            // 动态更新指令过滤 Schema（使用 array + union + role('checkbox')）
             if (commands.length === 0) {
-                // 没有指令时使用空数组
-                this.ctx.schema.set('multi-bot-controller.commandFilter', Schema.array(Schema.string())
-                    .default([])
-                    .description('允许响应的指令列表（暂无可用指令）'))
+                this.ctx.schema.set('multi-bot-controller.commandFilter', Schema.array(Schema.union([
+                    Schema.const('').description('暂无可用指令'),
+                ])).default([]).description('允许响应的指令列表（暂无可用指令）'))
                 return
             }
 
-            // 创建指令选择 schema（复选框形式，输出字符串数组）
-            // Schema.array(Schema.union([...])).role('checkbox')
-            const commandSchema = Schema.array(Schema.union(commands.map(name =>
+            const unionSchema = Schema.union(commands.map(name =>
                 Schema.const(name).description(name)
-            )))
+            ))
+
+            this.ctx.schema.set('multi-bot-controller.commandFilter', Schema.array(unionSchema)
                 .default([])
                 .description(`允许响应的指令列表（共 ${commands.length} 个可用指令）`)
-                .role('checkbox')
+                .role('select'))
 
-            this.ctx.schema.set('multi-bot-controller.commandFilter', commandSchema)
             logger.info(`指令 Schema 已更新，共 ${commands.length} 个选项`)
-        }
-
-        /** 获取当前指令列表 */
-        getCommandList(): string[] {
-            return this.commandList
         }
     }
 
-    // 创建指令服务（触发指令扫描和 schema 更新）
     const commandsService = new CommandsService(ctx)
 
     logger.info('Multi-Bot Controller 插件已加载')
-    logger.info(`当前配置了 ${bots.length} 个 bot`)
-
-    // 输出可用指令信息（方便用户配置）
-    const availableCommands = manager.getAvailableCommands()
-    if (availableCommands.length > 0) {
-        logger.info(`检测到 ${availableCommands.length} 个可用指令，可在配置中选择`)
-    }
 
     // ========================================
     // 核心功能：在 attach-channel 事件中拦截
     // ========================================
     ctx.on('attach-channel', (session) => {
-        // 私聊消息不需要处理 assignee
         if (session.isDirect) return
 
         const { platform, selfId, channel } = session
-
-        // 获取当前 bot 的配置
         const botConfig = manager.getBotConfig(platform, selfId)
 
-        if (!botConfig) {
-            // 没有配置，不干预
-            return
-        }
+        if (!botConfig) return
 
-        // ========================================
-        // 艾特逻辑：如果消息艾特了某个 bot，只有被艾特的 bot 能响应
-        // ========================================
+        // 艾特逻辑
         const mentionedIds = manager.getMentionedBotIds(session)
 
         if (mentionedIds.length > 0) {
-            // 消息中有艾特
             if (mentionedIds.includes(selfId)) {
-                // 当前 bot 被艾特了，直接接管
                 if ((channel as any).assignee !== selfId) {
                     logger.debug(`[${platform}:${selfId}] 被艾特，接管消息处理`)
                     ;(channel as any).assignee = selfId
                 }
             } else {
-                // 当前 bot 没有被艾特，不干预（让被艾特的 bot 处理）
                 if ((channel as any).assignee === selfId) {
-                    logger.debug(`[${platform}:${selfId}] 其他 bot 被艾特，放弃处理`)
                     ;(channel as any).assignee = ''
                 }
             }
             return
         }
 
-        // ========================================
-        // 无艾特：使用正常的过滤逻辑
-        // ========================================
-        // 判断是否应该响应
+        // 正常过滤逻辑
         if (!manager.shouldBotRespond(session, botConfig)) {
-            // 不应该响应
-            // 如果当前 assignee 是自己，主动放弃
             if ((channel as any).assignee === selfId) {
-                logger.debug(`[${platform}:${selfId}] 放弃处理消息`)
                 ;(channel as any).assignee = ''
             }
             return
         }
 
-        // 应该响应，确保 assignee 是自己
         if ((channel as any).assignee !== selfId) {
             logger.debug(`[${platform}:${selfId}] 接管消息处理`)
             ;(channel as any).assignee = selfId
         }
     })
-
-    // ========================================
-    // 辅助命令
-    // ========================================
-
-    // 查看可用的 bots
-    ctx.command('mc.bots', '查看可用的 Bot 列表')
-        .alias('mbc.bots')
-        .action(() => {
-            const bots = manager.getAvailableBots()
-            if (bots.length === 0) {
-                return '当前没有可用的 Bot'
-            }
-
-            let output = `可用的 Bot 列表（共 ${bots.length} 个）：\n`
-            for (const bot of bots) {
-                const statusIcon = bot.status === Status.ONLINE ? '🟢' : '🔴'
-                output += `${statusIcon} ${bot.platform}:${bot.selfId}\n`
-            }
-            return output
-        })
-
-    // 查看可用的指令
-    ctx.command('mc.commands', '查看可用的指令列表')
-        .alias('mbc.commands')
-        .action(() => {
-            const commands = manager.getAvailableCommands()
-            if (commands.length === 0) {
-                return '当前没有可用的指令'
-            }
-
-            let output = `可用的指令（共 ${commands.length} 个）：\n`
-            for (const cmd of commands) {
-                output += `- \`${cmd.name}\`${cmd.description ? `: ${cmd.description}` : ''}\n`
-            }
-            output += '\n提示：在配置界面中选择指令时，可以直接从列表中选择'
-            return output
-        })
 
     // 查看当前配置
     ctx.command('mc.config', '查看当前插件配置')
@@ -219,27 +157,19 @@ export function apply(ctx: Context, config: ConfigType) {
                 output += `## ${bot.platform}:${bot.selfId}\n`
                 output += `- 启用状态: ${bot.enabled ? '已启用' : '已禁用'}\n`
 
-                // 来源过滤
-                output += `- 来源过滤: ${bot.enableSourceFilter ? '已启用' : '未启用'}\n`
                 if (bot.enableSourceFilter) {
                     const filters = bot.sourceFilters || []
-                    output += `  - 过滤规则: ${filters.length === 0 ? '（无）' : `${filters.length} 条`}\n`
-                    output += `  - 过滤模式: ${bot.sourceFilterMode === 'blacklist' ? '黑名单' : '白名单'}\n`
+                    output += `- 来源过滤: ${filters.length} 条规则，${bot.sourceFilterMode === 'blacklist' ? '黑名单' : '白名单'}\n`
                 }
 
-                // 指令过滤
-                output += `- 指令过滤: ${bot.enableCommandFilter ? '已启用' : '未启用'}\n`
                 if (bot.enableCommandFilter) {
                     const commands = bot.commands || []
-                    output += `  - 指令列表: ${commands.length === 0 ? '（无）' : commands.map(c => `\`${c}\``).join(', ')}\n`
+                    output += `- 指令过滤: ${commands.length === 0 ? '（无）' : commands.map(c => `\`${c}\``).join(', ')}\n`
                 }
 
-                // 关键词过滤
-                output += `- 关键词过滤: ${bot.enableKeywordFilter ? '已启用' : '未启用'}\n`
                 if (bot.enableKeywordFilter) {
                     const keywords = bot.keywords || []
-                    output += `  - 关键词: ${keywords.length === 0 ? '（无）' : keywords.map(k => `\`${k}\``).join(', ')}\n`
-                    output += `  - 过滤模式: ${bot.keywordFilterMode === 'blacklist' ? '黑名单' : '白名单'}\n`
+                    output += `- 关键词过滤: ${keywords.length === 0 ? '（无）' : keywords.map(k => `\`${k}\``).join(', ')}\n`
                 }
 
                 output += '\n'
@@ -248,47 +178,9 @@ export function apply(ctx: Context, config: ConfigType) {
             return output.trim()
         })
 
-    // 快捷添加所有指令到剪贴板（返回文本供用户复制）
-    ctx.command('mc.copy-commands', '获取所有指令名称（方便配置时使用）')
-        .alias('mbc.copy-commands')
-        .action(() => {
-            const commands = manager.getAvailableCommands()
-            if (commands.length === 0) {
-                return '当前没有可用的指令'
-            }
-
-            const commandNames = commands.map(c => c.name).join(', ')
-            return `所有指令名称（可直接复制到配置中）：\n\n${commandNames}`
-        })
-
-    // ========================================
-    // 生命周期事件
-    // ========================================
-
-    // 当新 bot 上线时
-    ctx.on('login-added', ({ platform, selfId }) => {
-        logger.info(`新 Bot 上线: ${platform}:${selfId}`)
-        const existing = manager.getBotConfig(platform, selfId)
-        if (!existing) {
-            logger.warn(`Bot ${platform}:${selfId} 尚未配置，请添加配置以启用控制`)
-        }
-    })
-
     // 插件就绪时
     ctx.on('ready', () => {
         logger.info('Multi-Bot Controller 已就绪')
-        const bots = manager.getAvailableBots()
-        logger.info(`检测到 ${bots.length} 个 Bot`)
-
-        const onlineBots = bots.filter(b => b.status === Status.ONLINE)
-        logger.info(`其中 ${onlineBots.length} 个在线`)
-
-        const configuredBots = bots.filter(b => manager.getBotConfig(b.platform, b.selfId))
-        if (configuredBots.length < bots.length) {
-            logger.info(`${bots.length - configuredBots.length} 个 Bot 尚未配置控制规则`)
-        }
-
-        // 在 ready 时也触发一次指令扫描和 schema 更新
         commandsService['scanCommands']()
     })
 }
