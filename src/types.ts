@@ -25,8 +25,8 @@ export interface BotConfig {
     enabled: boolean
     /** 是否启用指令过滤 */
     enableCommandFilter?: boolean
-    /** 允许的指令列表（空=所有） */
-    commands?: string[]
+    /** 允许的指令列表（bitset，0=所有） */
+    commands?: number
     /** 是否启用关键词过滤 */
     enableKeywordFilter?: boolean
     /** 关键词列表 */

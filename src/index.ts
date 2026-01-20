@@ -65,20 +65,24 @@ export function apply(ctx: Context, config: ConfigType) {
         private updateConfigSchema() {
             const commands = this.commandList
 
-            // 动态更新指令过滤 Schema（复选菜单形式）
+            // 动态更新指令过滤 Schema（使用 bitset + role('select') 实现复选菜单）
             if (commands.length === 0) {
-                // 没有指令时使用简单的 string array
-                this.ctx.schema.set('multi-bot-controller.commandFilter', Schema.array(Schema.string())
-                    .default([])
+                // 没有指令时使用 bitset（空）
+                this.ctx.schema.set('multi-bot-controller.commandFilter', Schema.bitset({})
+                    .default(0)
                     .description('允许响应的指令列表（暂无可用指令）'))
                 return
             }
 
-            // 创建带复选菜单的指令选择 schema
-            const commandSchema = Schema.array(Schema.union(commands.map(name =>
-                Schema.const(name).description(name)
-            )))
-                .default([])
+            // 创建指令枚举对象（每个指令对应一个位值）
+            const commandEnum: Record<string, number> = {}
+            commands.forEach((name, index) => {
+                commandEnum[name] = 1 << index
+            })
+
+            // 创建 bitset schema（复选菜单形式）
+            const commandSchema = Schema.bitset(commandEnum)
+                .default(0)
                 .description(`允许响应的指令列表（共 ${commands.length} 个可用指令）`)
                 .role('select')
 
@@ -229,8 +233,9 @@ export function apply(ctx: Context, config: ConfigType) {
                 // 指令过滤
                 output += `- 指令过滤: ${bot.enableCommandFilter ? '已启用' : '未启用'}\n`
                 if (bot.enableCommandFilter) {
-                    const commands = bot.commands || []
-                    output += `  - 指令列表: ${commands.length === 0 ? '（无）' : commands.map(c => `\`${c}\``).join(', ')}\n`
+                    const commandsBitset = bot.commands || 0
+                    const commandCount = commandsBitset === 0 ? 0 : commandsBitset.toString(2).split('1').length - 1
+                    output += `  - 已选指令: ${commandCount === 0 ? '（无）' : `${commandCount} 个`}\n`
                 }
 
                 // 关键词过滤
