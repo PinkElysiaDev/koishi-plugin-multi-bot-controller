@@ -24,11 +24,15 @@ export function apply(ctx: Context, config: ConfigType) {
         private commandList: string[] = []
 
         constructor(private ctx: Context) {
-            this.scanCommands()
+            // 延迟初始化，确保配置系统已就绪
+            setTimeout(() => {
+                this.scanCommands()
+            }, 1000)
+
             // 监听插件生命周期事件
             this.ctx.on('internal/runtime', (runtime) => {
                 logger.debug(`插件加载: ${runtime.plugin?.name || 'Anonymous'}`)
-                this.scanCommands()
+                setTimeout(() => this.scanCommands(), 100)
             })
             // 监听指令变化
             this.ctx.on('command-added', () => this.scanCommands())
@@ -41,6 +45,7 @@ export function apply(ctx: Context, config: ConfigType) {
             const commandMap = (this.ctx.$commander as any)?._commandMap
             if (!commandMap) {
                 this.commandList = []
+                this.updateConfigSchema()
                 return
             }
 
@@ -63,7 +68,7 @@ export function apply(ctx: Context, config: ConfigType) {
             // 动态更新指令过滤 Schema（完整的 array schema，带 .role('select')）
             if (commands.length === 0) {
                 // 没有指令时使用简单的 string array
-                ctx.schema.set('multi-bot-controller.commandFilter', Schema.array(Schema.string())
+                this.ctx.schema.set('multi-bot-controller.commandFilter', Schema.array(Schema.string())
                     .default([])
                     .description('允许响应的指令列表（暂无可用指令）'))
                 return
@@ -77,13 +82,18 @@ export function apply(ctx: Context, config: ConfigType) {
                 .description(`允许响应的指令列表（共 ${commands.length} 个可用指令）`)
                 .role('select')
 
-            ctx.schema.set('multi-bot-controller.commandFilter', commandSchema)
+            this.ctx.schema.set('multi-bot-controller.commandFilter', commandSchema)
             logger.debug(`指令 Schema 已更新，共 ${commands.length} 个选项`)
+        }
+
+        /** 获取当前指令列表 */
+        getCommandList(): string[] {
+            return this.commandList
         }
     }
 
     // 创建指令服务（触发指令扫描和 schema 更新）
-    new CommandsService(ctx)
+    const commandsService = new CommandsService(ctx)
 
     logger.info('Multi-Bot Controller 插件已加载')
     logger.info(`当前配置了 ${bots.length} 个 bot`)
