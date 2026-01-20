@@ -286,5 +286,8 @@ export function apply(ctx: Context, config: ConfigType) {
         if (configuredBots.length < bots.length) {
             logger.info(`${bots.length - configuredBots.length} 个 Bot 尚未配置控制规则`)
         }
+
+        // 在 ready 时也触发一次指令扫描和 schema 更新
+        commandsService['scanCommands']()
     })
 }

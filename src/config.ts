@@ -47,7 +47,7 @@ const createKeywordFilterSchema = () => {
  */
 const createCommandFilterSchema = () => {
     return Schema.dynamic('multi-bot-controller.commandFilter')
-        .description('允许响应的指令列表（插件加载后会自动获取可用指令）')
+        .description('**开启插件后，将展示可用的指令列表**<br>**此列表会自动监听指令变化并实时更新**<br>> 选择该 bot 允许响应的指令')
 }
 
 /**
@@ -179,7 +179,7 @@ const createStaticKeywordFilterSchema = () => {
  */
 const createStaticCommandFilterSchema = () => {
     return Schema.dynamic('multi-bot-controller.commandFilter')
-        .description('允许响应的指令列表（插件加载后会自动获取可用指令）')
+        .description('**开启插件后，将展示可用的指令列表**<br>**此列表会自动监听指令变化并实时更新**<br>> 选择该 bot 允许响应的指令')
 }
 
 /**
