@@ -142,7 +142,7 @@ export class BotManager {
 
     /**
      * 检查指令权限
-     * 只响应 bitset 中选中的指令
+     * 只响应列表中的指令
      */
     private checkCommandPermission(session: Session, botConfig: BotConfig): boolean {
         // 确保命令存在
@@ -152,7 +152,7 @@ export class BotManager {
         }
 
         const commandName = session.argv.command.name
-        const { enableCommandFilter, commands = 0 } = botConfig
+        const { enableCommandFilter, commands = [] } = botConfig
 
         // 如果未启用指令过滤，所有指令都放行
         if (!enableCommandFilter) {
@@ -161,39 +161,18 @@ export class BotManager {
             return true
         }
 
-        // bitset 为 0 = 不响应任何指令
-        if (commands === 0) {
+        // 列表为空 = 不响应任何指令
+        if (commands.length === 0) {
             this.debugLog(session,
-                `指令 "${commandName}"：未选择任何指令，不响应`)
+                `指令 "${commandName}"：列表为空，不响应`)
             return false
         }
 
-        // 获取当前指令列表
-        const commandMap = (this.ctx.$commander as any)?._commandMap
-        if (!commandMap) {
-            return true
-        }
-
-        // 获取排序后的指令列表（与 schema 中的顺序一致）
-        const sortedCommands = Array.from(commandMap.values())
-            .filter((cmd: any) => cmd.name && cmd.name !== '' && !cmd.name.includes('.'))
-            .map((cmd: any) => cmd.name)
-            .sort()
-
-        // 找到当前指令在列表中的索引
-        const commandIndex = sortedCommands.indexOf(commandName)
-        if (commandIndex === -1) {
-            // 指令不在列表中（可能被子命令过滤），放行
-            return true
-        }
-
-        // 检查对应的位是否被设置
-        const bit = 1 << commandIndex
-        const isSelected = (commands & bit) !== 0
-
+        // 只响应列表中的指令
+        const inList = commands.includes(commandName)
         this.debugLog(session,
-            `指令 "${commandName}"：${isSelected ? '已选中' : '未选中'} → ${isSelected}`)
-        return isSelected
+            `指令 "${commandName}"：${inList ? '在' : '不在'}列表中 → ${inList}`)
+        return inList
     }
 
     /**

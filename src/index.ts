@@ -65,26 +65,22 @@ export function apply(ctx: Context, config: ConfigType) {
         private updateConfigSchema() {
             const commands = this.commandList
 
-            // 动态更新指令过滤 Schema（使用 bitset + role('select') 实现复选菜单）
+            // 动态更新指令过滤 Schema（使用 array + union + role('checkbox')）
             if (commands.length === 0) {
-                // 没有指令时使用 bitset（空）
-                this.ctx.schema.set('multi-bot-controller.commandFilter', Schema.bitset({})
-                    .default(0)
+                // 没有指令时使用空数组
+                this.ctx.schema.set('multi-bot-controller.commandFilter', Schema.array(Schema.string())
+                    .default([])
                     .description('允许响应的指令列表（暂无可用指令）'))
                 return
             }
 
-            // 创建指令枚举对象（每个指令对应一个位值）
-            const commandEnum: Record<string, number> = {}
-            commands.forEach((name, index) => {
-                commandEnum[name] = 1 << index
-            })
-
-            // 创建 bitset schema（复选菜单形式）
-            const commandSchema = Schema.bitset(commandEnum)
-                .default(0)
+            // 创建指令选择 schema（复选框形式，输出字符串数组）
+            const commandSchema = Schema.array(Schema.union(commands.map(name =>
+                Schema.const(name).description(name)
+            )))
+                .default([])
                 .description(`允许响应的指令列表（共 ${commands.length} 个可用指令）`)
-                .role('select')
+                .role('checkbox')
 
             this.ctx.schema.set('multi-bot-controller.commandFilter', commandSchema)
             logger.info(`指令 Schema 已更新，共 ${commands.length} 个选项`)
@@ -233,9 +229,8 @@ export function apply(ctx: Context, config: ConfigType) {
                 // 指令过滤
                 output += `- 指令过滤: ${bot.enableCommandFilter ? '已启用' : '未启用'}\n`
                 if (bot.enableCommandFilter) {
-                    const commandsBitset = bot.commands || 0
-                    const commandCount = commandsBitset === 0 ? 0 : commandsBitset.toString(2).split('1').length - 1
-                    output += `  - 已选指令: ${commandCount === 0 ? '（无）' : `${commandCount} 个`}\n`
+                    const commands = bot.commands || []
+                    output += `  - 指令列表: ${commands.length === 0 ? '（无）' : commands.map(c => `\`${c}\``).join(', ')}\n`
                 }
 
                 // 关键词过滤
