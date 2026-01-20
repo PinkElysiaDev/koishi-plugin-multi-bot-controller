@@ -65,7 +65,7 @@ export function apply(ctx: Context, config: ConfigType) {
         private updateConfigSchema() {
             const commands = this.commandList
 
-            // 动态更新指令过滤 Schema（完整的 array schema，带 .role('select')）
+            // 动态更新指令过滤 Schema（复选菜单形式）
             if (commands.length === 0) {
                 // 没有指令时使用简单的 string array
                 this.ctx.schema.set('multi-bot-controller.commandFilter', Schema.array(Schema.string())
@@ -83,7 +83,7 @@ export function apply(ctx: Context, config: ConfigType) {
                 .role('select')
 
             this.ctx.schema.set('multi-bot-controller.commandFilter', commandSchema)
-            logger.debug(`指令 Schema 已更新，共 ${commands.length} 个选项`)
+            logger.info(`指令 Schema 已更新，共 ${commands.length} 个选项`)
         }
 
         /** 获取当前指令列表 */
