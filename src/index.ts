@@ -75,6 +75,7 @@ export function apply(ctx: Context, config: ConfigType) {
             }
 
             // 创建指令选择 schema（复选框形式，输出字符串数组）
+            // Schema.array(Schema.union([...])).role('checkbox')
             const commandSchema = Schema.array(Schema.union(commands.map(name =>
                 Schema.const(name).description(name)
             )))
