@@ -43,13 +43,11 @@ const createKeywordFilterSchema = () => {
 }
 
 /**
- * 创建指令过滤器 Schema（字符串数组，用户手动输入）
+ * 创建指令过滤器 Schema（动态引用，将在运行时更新）
  */
 const createCommandFilterSchema = () => {
-    return Schema.array(Schema.string())
-        .default([])
-        .description('允许响应的指令列表（输入指令名称，可使用 mc.commands 指令查看可用指令）')
-        .role('list')
+    return Schema.dynamic('multi-bot-controller.commandFilter')
+        .description('允许响应的指令列表（插件加载后会自动获取可用指令）')
 }
 
 /**
@@ -177,13 +175,11 @@ const createStaticKeywordFilterSchema = () => {
 }
 
 /**
- * 静态的指令过滤器 Schema（字符串数组，用户手动输入）
+ * 静态的指令过滤器 Schema（动态引用，将在运行时更新）
  */
 const createStaticCommandFilterSchema = () => {
-    return Schema.array(Schema.string())
-        .default([])
-        .description('允许响应的指令列表（输入指令名称，可使用 mc.commands 指令查看可用指令）')
-        .role('list')
+    return Schema.dynamic('multi-bot-controller.commandFilter')
+        .description('允许响应的指令列表（插件加载后会自动获取可用指令）')
 }
 
 /**
