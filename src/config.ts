@@ -144,7 +144,7 @@ export const createConfig = (ctx: Context): Schema<any> => {
                 .default(false)
                 .description('启用调试日志'),
         }).description('其他设置'),
-    ]).description('### 插件信息\n\n主页：[GitHub](https://github.com/MissPinkElf/koishi-plugin-multi-bot-controller) | 反馈问题请在 GitHub 提交 Issue')
+    ])
 }
 
 /**
@@ -273,7 +273,7 @@ export const Config = Schema.intersect([
             .default(false)
             .description('启用调试日志'),
     }).description('其他设置'),
-]).description('### 插件信息\n\n主页：[GitHub](https://github.com/MissPinkElf/koishi-plugin-multi-bot-controller) | 反馈问题请在 GitHub 提交 Issue')
+])
 
 // 静态导出（用于类型检查）
 export const name = 'multi-bot-controller'

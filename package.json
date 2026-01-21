@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-multi-bot-controller",
   "description": "Multi-bot response controller - Manage which bot should respond to messages in multi-bot scenarios",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -21,6 +21,14 @@
   "peerDependencies": {
     "@satorijs/protocol": "^1.6.0",
     "koishi": "^4.18.0"
+  },
+  "homepage": "https://github.com/MissPinkElf/koishi-plugin-multi-bot-controller",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MissPinkElf/koishi-plugin-multi-bot-controller.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MissPinkElf/koishi-plugin-multi-bot-controller/issues"
   },
   "koishi": {
     "description": {
