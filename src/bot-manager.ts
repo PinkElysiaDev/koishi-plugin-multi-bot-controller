@@ -48,7 +48,7 @@ export class BotManager {
             return false
         }
 
-        const isCommand = session.argv?.command !== null
+        const isCommand = !!session.argv?.command
 
         // 2. 指令处理
         if (isCommand) {
