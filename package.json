@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-multi-bot-controller",
   "description": "Multi-bot response controller - Manage which bot should respond to messages in multi-bot scenarios",
-  "version": "0.2.2",
+  "version": "1.0.0",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -10,22 +10,24 @@
   ],
   "license": "MIT",
   "author": "MissPinkElf <xiaolan20020118@gmail.com>",
+  "homepage": "https://github.com/MissPinkElf/koishi-plugin-multi-bot-controller#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MissPinkElf/koishi-plugin-multi-bot-controller.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MissPinkElf/koishi-plugin-multi-bot-controller/issues"
+  },
   "keywords": [
     "bot",
     "chatbot",
     "koishi",
     "plugin",
     "multi-bot",
-    "bot-controller"
+    "bot-controller",
+    "assignee",
+    "message-dispatcher"
   ],
-  "homepage": "https://github.com/MissPinkElf/koishi-plugin-multi-bot-controller",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/MissPinkElf/koishi-plugin-multi-bot-controller.git"
-  },
-  "bugs": {
-    "url": "https://github.com/MissPinkElf/koishi-plugin-multi-bot-controller/issues"
-  },
   "koishi": {
     "description": {
       "zh": "多 Bot 响应控制器 - 管理多个 Bot 在同一频道中的响应行为，支持基于关键词和指令的过滤规则",

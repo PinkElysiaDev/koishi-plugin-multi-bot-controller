@@ -95,6 +95,7 @@ export function apply(ctx: Context, config: ConfigType) {
     const commandsService = new CommandsService(ctx)
 
     logger.info('Multi-Bot Controller 插件已加载')
+    logger.info(`已配置 ${bots.length} 个 Bot 控制规则`)
 
     // ========================================
     // 核心功能：在 attach-channel 事件中拦截
@@ -113,46 +114,43 @@ export function apply(ctx: Context, config: ConfigType) {
         if (mentionedIds.length > 0) {
             if (mentionedIds.includes(selfId)) {
                 if ((channel as any).assignee !== selfId) {
-                    logger.debug(`[${platform}:${selfId}] 被艾特，接管消息处理`)
+                    logger.info(`[${platform}:${selfId}] 被艾特，接管消息处理`)
                     ;(channel as any).assignee = selfId
                 }
             } else {
                 // 被艾特但不是自己，不响应
                 if ((channel as any).assignee === selfId) {
-                    (channel as any).assignee = ''
+                    logger.debug(`[${platform}:${selfId}] 被 ${mentionedIds.join(', ')} 艾特，但不是自己，取消响应`)
+                    ;(channel as any).assignee = ''
                 }
             }
             return
         }
 
         // 正常过滤逻辑
-        // 使用标记来避免多个 bot 同时设置 assignee
         const shouldRespond = manager.shouldBotRespond(session, botConfig)
 
         if (!shouldRespond) {
             if ((channel as any).assignee === selfId) {
-                (channel as any).assignee = ''
+                logger.debug(`[${platform}:${selfId}] 不满足响应条件，取消响应`)
+                ;(channel as any).assignee = ''
             }
             return
         }
 
         // 检查是否有其他 bot 应该优先响应
-        // 如果当前 channel 的 assignee 已经被其他 bot 设置，且该 bot 是当前消息的有效响应者
-        // 则当前 bot 不应该覆盖它
         const currentAssignee = (channel as any).assignee as string | undefined
 
         if (currentAssignee && currentAssignee !== selfId && currentAssignee !== '') {
-            // 检查当前 assignee 对应的 bot 是否也应该响应这条消息
             const otherBotConfig = manager.getBotConfig(platform, currentAssignee)
             if (otherBotConfig && manager.shouldBotRespond(session, otherBotConfig)) {
-                // 其他 bot 也在响应列表中，不覆盖
-                logger.debug(`[${platform}:${selfId}] Bot ${currentAssignee} 已在响应，跳过`)
+                logger.info(`[${platform}:${selfId}] Bot ${currentAssignee} 已在响应，跳过`)
                 return
             }
         }
 
         if ((channel as any).assignee !== selfId) {
-            logger.debug(`[${platform}:${selfId}] 接管消息处理`)
+            logger.info(`[${platform}:${selfId}] 满足响应条件，接管消息处理`)
             ;(channel as any).assignee = selfId
         }
     })
