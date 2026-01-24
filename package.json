@@ -32,6 +32,9 @@
     "description": {
       "zh": "多 Bot 响应控制器 - 管理多个 Bot 在同一频道中的响应行为，支持基于关键词和指令的过滤规则",
       "en": "Multi-bot response controller - Manage which bot should respond to messages in multi-bot scenarios"
+    },
+    "service": {
+      "required": []
     }
   },
   "peerDependencies": {

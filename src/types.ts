@@ -3,6 +3,13 @@
 /** 过滤模式 */
 export type FilterMode = 'blacklist' | 'whitelist'
 
+/** Bot 信息（供其他插件使用） */
+export interface BotInfo {
+  platform: string
+  selfId: string
+  enabled: boolean
+}
+
 /** 来源过滤器类型 */
 export type SourceFilterType = 'guild' | 'user' | 'channel' | 'private'
 

@@ -1,13 +1,25 @@
 // src/index.ts
 import { Context, Schema } from 'koishi'
-import type { Config as ConfigType } from './types'
-import { BotManager } from './bot-manager'
+import type { Config as ConfigType, BotInfo } from './types'
+import { MultiBotControllerService } from './bot-manager'
 
-export { BotConfig } from './types'
+export { BotConfig, BotInfo } from './types'
 export { name, Config } from './config'
 
-export const usage = `
----
+// 声明 Koishi 类型扩展
+declare module 'koishi' {
+  interface Context {
+    // multi-bot-controller 服务（供其他插件使用）
+    'multi-bot-controller': MultiBotControllerService
+  }
+
+  interface Events {
+    /** bot 配置更新事件 */
+    'multi-bot-controller/bots-updated'(bots: BotInfo[]): void
+  }
+}
+
+export const usage = `---
 
 ## 使用说明
 
@@ -22,12 +34,30 @@ export const usage = `
 - **adapter-onebot 多开**: 使用 adapter-onebot 多开时无需修改默认的服务器监听路径
 - **Bug 反馈**: 请在插件主页提交 Issue
 
----`
+---
+
+`
 
 export function apply(ctx: Context, config: ConfigType) {
     const logger = ctx.logger('multi-bot-controller')
-    const bots = config.bots || []
-    const manager = new BotManager(ctx, bots)
+
+    // 注册服务
+    const mbcService = new MultiBotControllerService(ctx, config)
+
+    // 将服务添加到 context
+    ctx['multi-bot-controller'] = mbcService
+
+    /**
+     * 发出 bot 配置更新事件
+     */
+    const emitBotsUpdated = () => {
+        const botInfoList = mbcService.getBots()
+        ctx.emit('multi-bot-controller/bots-updated', botInfoList)
+        logger.debug(`已发出 bot 配置更新事件，共 ${botInfoList.length} 个 bot`)
+    }
+
+    // 立即发出初始事件（供后续加载的插件接收）
+    setTimeout(() => emitBotsUpdated(), 100)
 
     // ========================================
     // 动态指令监听服务
@@ -95,11 +125,13 @@ export function apply(ctx: Context, config: ConfigType) {
     const commandsService = new CommandsService(ctx)
 
     logger.info('Multi-Bot Controller 插件已加载')
-    logger.info(`已配置 ${bots.length} 个 Bot 控制规则`)
+    logger.info(`已配置 ${(config.bots || []).length} 个 Bot 控制规则`)
 
     // ========================================
     // 核心功能：在 attach-channel 事件中拦截
     // ========================================
+    const manager = mbcService.getManager()
+
     ctx.on('attach-channel', (session) => {
         if (session.isDirect) return
 
@@ -177,12 +209,12 @@ export function apply(ctx: Context, config: ConfigType) {
 
                 if (bot.enableCommandFilter) {
                     const commands = bot.commands || []
-                    output += `- 指令过滤: ${commands.length === 0 ? '（无）' : commands.map(c => `\`${c}\``).join(', ')}\n`
+                    output += `- 指令过滤: ${commands.length === 0 ? '（无）' : commands.map((c: string) => `\`${c}\``).join(', ')}\n`
                 }
 
                 if (bot.enableKeywordFilter) {
                     const keywords = bot.keywords || []
-                    output += `- 关键词过滤: ${keywords.length === 0 ? '（无）' : keywords.map(k => `\`${k}\``).join(', ')}\n`
+                    output += `- 关键词过滤: ${keywords.length === 0 ? '（无）' : keywords.map((k: string) => `\`${k}\``).join(', ')}\n`
                 }
 
                 output += '\n'
@@ -194,6 +226,7 @@ export function apply(ctx: Context, config: ConfigType) {
     // 插件就绪时
     ctx.on('ready', () => {
         logger.info('Multi-Bot Controller 已就绪')
+        emitBotsUpdated()
         commandsService['scanCommands']()
     })
 }

@@ -1,6 +1,6 @@
 // src/bot-manager.ts
-import { Context, Session } from 'koishi'
-import { BotConfig } from './types'
+import { Context, Session, Service } from 'koishi'
+import { BotConfig, BotInfo, Config } from './types'
 
 export class BotManager {
     private logger: ReturnType<Context['logger']>
@@ -10,6 +10,18 @@ export class BotManager {
         private configs: BotConfig[]
     ) {
         this.logger = ctx.logger('multi-bot-controller')
+    }
+
+    /**
+     * 获取已配置的 bot 信息列表
+     * 供其他插件使用
+     */
+    getBots(): BotInfo[] {
+        return this.configs.map(bot => ({
+            platform: bot.platform,
+            selfId: bot.selfId,
+            enabled: bot.enabled,
+        }))
     }
 
     /** 获取指定 bot 的配置 */
@@ -150,5 +162,33 @@ export class BotManager {
             `[${session.platform}:${session.selfId}] ` +
             `频道 ${session.channelId}, 用户 ${session.userId}: ${message}`
         )
+    }
+}
+
+/**
+ * Multi-Bot Controller 服务
+ * 为其他插件提供 Bot 配置信息
+ */
+export class MultiBotControllerService extends Service {
+    private manager: BotManager
+
+    constructor(public readonly ctx: Context, config: Config) {
+        super(ctx, 'multi-bot-controller')
+        this.manager = new BotManager(ctx, config.bots || [])
+    }
+
+    /**
+     * 获取已配置的 bot 信息列表
+     * 供其他插件使用
+     */
+    getBots(): BotInfo[] {
+        return this.manager.getBots()
+    }
+
+    /**
+     * 获取 BotManager 实例（供内部使用）
+     */
+    getManager(): BotManager {
+        return this.manager
     }
 }
