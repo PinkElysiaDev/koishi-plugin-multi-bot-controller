@@ -4,6 +4,7 @@ import type { Config as ConfigType, BotInfo } from './types'
 import { MultiBotControllerService } from './bot-manager'
 
 export { BotConfig, BotInfo } from './types'
+export { MultiBotControllerService } from './bot-manager'
 export { name, Config } from './config'
 
 // 声明 Koishi 类型扩展

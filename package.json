@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-multi-bot-controller",
   "description": "Multi-bot response controller - Manage which bot should respond to messages in multi-bot scenarios",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
