@@ -140,19 +140,28 @@ export class BotManager {
     /**
      * 检查关键词匹配
      * 用于非指令消息的过滤
+     *
+     * 未开启过滤时：响应所有消息
+     * 开启白名单模式：只响应包含关键词的消息
+     * 开启黑名单模式：不响应包含关键词的消息
      */
     private checkKeywordMatch(content: string, botConfig: BotConfig, session: Session): boolean {
         const { enableKeywordFilter, keywords = [], keywordFilterMode = 'whitelist' } = botConfig
 
+        // 未开启关键词过滤：响应所有消息
         if (!enableKeywordFilter) {
-            return false
+            return true
         }
 
+        // 开启过滤但关键词列表为空：不响应
         if (keywords.length === 0) {
             return false
         }
 
         const matched = keywords.some(kw => content.includes(kw))
+
+        // 白名单：匹配关键词才响应
+        // 黑名单：匹配关键词不响应
         return keywordFilterMode === 'whitelist' ? matched : !matched
     }
 
