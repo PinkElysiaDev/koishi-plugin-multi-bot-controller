@@ -141,51 +141,68 @@ export function apply(ctx: Context, config: ConfigType) {
 
         if (!botConfig) return
 
-        // 艾特逻辑
+        // ========== 1. 来源过滤（最高优先级）==========
+        if (!manager.checkSourceFilter(session, botConfig)) {
+            if ((channel as any).assignee === selfId) {
+                logger.debug(`[${platform}:${selfId}] 不在允许的来源中，取消响应`)
+                ;(channel as any).assignee = ''
+            }
+            return
+        }
+
+        // ========== 2. 艾特检测 ==========
         const mentionedIds = manager.getMentionedBotIds(session)
 
         if (mentionedIds.length > 0) {
             if (mentionedIds.includes(selfId)) {
+                // 被艾特 → 接管消息处理
                 if ((channel as any).assignee !== selfId) {
                     logger.info(`[${platform}:${selfId}] 被艾特，接管消息处理`)
                     ;(channel as any).assignee = selfId
                 }
             } else {
-                // 被艾特但不是自己，不响应
+                // 别人被艾特 → 取消响应
                 if ((channel as any).assignee === selfId) {
                     logger.debug(`[${platform}:${selfId}] 被 ${mentionedIds.join(', ')} 艾特，但不是自己，取消响应`)
+                    ;(channel as any).assignee = ''
+                }
+            }
+            return  // 艾特处理完直接返回，跳过后续判断
+        }
+
+        // ========== 3. 非艾特时的正常过滤逻辑 ==========
+        // 3a. 指令处理
+        const isCommand = !!session.argv?.command
+        if (isCommand) {
+            const hasPermission = manager.checkCommandPermission(session, botConfig)
+            if (hasPermission) {
+                if ((channel as any).assignee !== selfId) {
+                    logger.info(`[${platform}:${selfId}] 指令权限验证通过，接管消息处理`)
+                    ;(channel as any).assignee = selfId
+                }
+            } else {
+                if ((channel as any).assignee === selfId) {
+                    logger.debug(`[${platform}:${selfId}] 指令权限验证失败，取消响应`)
                     ;(channel as any).assignee = ''
                 }
             }
             return
         }
 
-        // 正常过滤逻辑
-        const shouldRespond = manager.shouldBotRespond(session, botConfig)
-
-        if (!shouldRespond) {
+        // 3b. 关键词过滤
+        const keywordMatch = manager.checkKeywordMatch(session.content || '', botConfig)
+        if (keywordMatch) {
+            if ((channel as any).assignee !== selfId) {
+                logger.info(`[${platform}:${selfId}] 关键词匹配，接管消息处理`)
+                ;(channel as any).assignee = selfId
+            }
+        } else {
             if ((channel as any).assignee === selfId) {
-                logger.debug(`[${platform}:${selfId}] 不满足响应条件，取消响应`)
+                logger.debug(`[${platform}:${selfId}] 关键词不匹配，取消响应`)
                 ;(channel as any).assignee = ''
             }
-            return
         }
-
-        // 检查是否有其他 bot 应该优先响应
-        const currentAssignee = (channel as any).assignee as string | undefined
-
-        if (currentAssignee && currentAssignee !== selfId && currentAssignee !== '') {
-            const otherBotConfig = manager.getBotConfig(platform, currentAssignee)
-            if (otherBotConfig && manager.shouldBotRespond(session, otherBotConfig)) {
-                logger.info(`[${platform}:${selfId}] Bot ${currentAssignee} 已在响应，跳过`)
-                return
-            }
-        }
-
-        if ((channel as any).assignee !== selfId) {
-            logger.info(`[${platform}:${selfId}] 满足响应条件，接管消息处理`)
-            ;(channel as any).assignee = selfId
-        }
+        return
     })
 
     // 查看当前配置

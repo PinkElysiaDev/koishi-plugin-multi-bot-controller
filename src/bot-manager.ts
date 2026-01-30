@@ -68,14 +68,14 @@ export class BotManager {
         }
 
         // 3. 非指令处理：检查关键词过滤
-        return this.checkKeywordMatch(session.content || '', botConfig, session)
+        return this.checkKeywordMatch(session.content || '', botConfig)
     }
 
     /**
      * 检查来源过滤
      * @returns true 表示通过来源检查，false 表示被过滤
      */
-    private checkSourceFilter(session: Session, botConfig: BotConfig): boolean {
+    checkSourceFilter(session: Session, botConfig: BotConfig): boolean {
         const { enableSourceFilter, sourceFilters = [], sourceFilterMode = 'whitelist' } = botConfig
 
         // 如果未启用来源过滤，全部通过
@@ -117,7 +117,7 @@ export class BotManager {
      * 检查指令权限
      * 只响应列表中的指令
      */
-    private checkCommandPermission(session: Session, botConfig: BotConfig): boolean {
+    checkCommandPermission(session: Session, botConfig: BotConfig): boolean {
         if (!session.argv?.command) {
             return true
         }
@@ -145,7 +145,7 @@ export class BotManager {
      * 开启白名单模式：只响应包含关键词的消息
      * 开启黑名单模式：不响应包含关键词的消息
      */
-    private checkKeywordMatch(content: string, botConfig: BotConfig, session: Session): boolean {
+    checkKeywordMatch(content: string, botConfig: BotConfig): boolean {
         const { enableKeywordFilter, keywords = [], keywordFilterMode = 'whitelist' } = botConfig
 
         // 未开启关键词过滤：响应所有消息
