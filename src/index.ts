@@ -133,13 +133,57 @@ export function apply(ctx: Context, config: ConfigType) {
     // ========================================
     const manager = mbcService.getManager()
 
+    // ========================================
+    // Middleware：在消息处理前进行来源过滤检查
+    // ========================================
+    // 注意：middleware 执行顺序很关键，需要在其他插件之前执行
+    ctx.middleware((session, next) => {
+        try {
+            const { platform, selfId } = session
+            const botConfig = manager.getBotConfig(platform, selfId)
+
+            // 未配置或已禁用的 bot - 不处理消息，让其他插件处理
+            if (!botConfig || !botConfig.enabled) {
+                return next()
+            }
+
+            // 来源过滤检查 - 不符合条件的直接返回，不调用 next() 阻止后续处理
+            if (!manager.checkSourceFilter(session, botConfig)) {
+                logger.debug(`[${platform}:${selfId}] 来源过滤：阻止消息响应`)
+                return  // 不调用 next()，阻止后续中间件执行
+            }
+
+            // 通过来源过滤，继续处理
+            return next()
+        } catch (error) {
+            logger.error('Middleware 执行出错:', error)
+            return next()
+        }
+    })
+
     ctx.on('attach-channel', (session) => {
         if (session.isDirect) return
 
         const { platform, selfId, channel } = session
         const botConfig = manager.getBotConfig(platform, selfId)
 
-        if (!botConfig) return
+        // 未配置的 bot 不响应任何消息
+        if (!botConfig) {
+            if ((channel as any).assignee === selfId) {
+                logger.debug(`[${platform}:${selfId}] 未配置控制规则，取消响应`)
+                ;(channel as any).assignee = ''
+            }
+            return
+        }
+
+        // 已禁用的 bot 不响应任何消息
+        if (!botConfig.enabled) {
+            if ((channel as any).assignee === selfId) {
+                logger.debug(`[${platform}:${selfId}] 已禁用响应控制，取消响应`)
+                ;(channel as any).assignee = ''
+            }
+            return
+        }
 
         // ========== 1. 来源过滤（最高优先级）==========
         if (!manager.checkSourceFilter(session, botConfig)) {
