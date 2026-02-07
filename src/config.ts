@@ -143,6 +143,9 @@ export const createConfig = (ctx: Context): Schema<any> => {
             debug: Schema.boolean()
                 .default(false)
                 .description('启用调试日志'),
+            verboseLog: Schema.boolean()
+                .default(false)
+                .description('详细日志模式：显示每条消息的完整判断过程'),
         }).description('其他设置'),
     ])
 }
@@ -161,6 +164,9 @@ export const Config = Schema.intersect([
         debug: Schema.boolean()
             .default(false)
             .description('启用调试日志'),
+        verboseLog: Schema.boolean()
+            .default(false)
+            .description('详细日志模式：显示每条消息的完整判断过程'),
     }).description('其他设置'),
 ])
 

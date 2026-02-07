@@ -2,6 +2,30 @@
 import { Context, Session, Service } from 'koishi'
 import { BotConfig, BotInfo, Config } from './types'
 
+/**
+ * 判断结果的详细信息
+ */
+export interface DecisionDetails {
+    /** 来源过滤结果 */
+    sourceFilter: { passed: boolean; reason?: string }
+    /** 是否被艾特 */
+    isMentioned: boolean
+    /** 艾特的是哪些 bot */
+    mentionedBots: string[]
+    /** 是否是指令 */
+    isCommand: boolean
+    /** 指令名称 */
+    commandName?: string
+    /** 指令过滤结果 */
+    commandFilter: { passed: boolean; reason?: string }
+    /** 关键词过滤结果 */
+    keywordFilter: { passed: boolean; reason?: string; matchedKeyword?: string }
+    /** 最终结果 */
+    finalResult: 'respond' | 'skip' | 'yield'
+    /** 最终结果原因 */
+    finalReason: string
+}
+
 export class BotManager {
     private logger: ReturnType<Context['logger']>
 
@@ -33,15 +57,66 @@ export class BotManager {
 
     /**
      * 获取消息中艾特的所有 bot selfId 列表
+     * 多种方式检测：stripped.appel、elements、quote、content 正则
      */
     getMentionedBotIds(session: Session): string[] {
-        const elements = session.elements || []
         const mentionedIds: string[] = []
-        for (const el of elements) {
-            if ((el as any)?.type === 'at' && (el as any)?.id) {
-                mentionedIds.push((el as any).id)
+        const seen = new Set<string>()
+
+        // 1. 检查 Koishi 预处理的艾特结果
+        // 如果 stripped.appel 为 true，说明当前 bot 被艾特
+        if ((session as any).stripped?.appel) {
+            const selfId = session.selfId
+            if (!seen.has(selfId)) {
+                mentionedIds.push(selfId)
+                seen.add(selfId)
             }
         }
+
+        // 2. 从 session.elements 中提取 at 元素
+        const elements = session.elements || []
+        for (const el of elements) {
+            if ((el as any)?.type === 'at' && (el as any)?.attrs?.['id']) {
+                const id = (el as any).attrs.id
+                if (!seen.has(id)) {
+                    mentionedIds.push(id)
+                    seen.add(id)
+                }
+            }
+        }
+
+        // 3. 检查是否回复某个 bot（quote）
+        if (session.quote?.user?.id) {
+            const quoteUserId = session.quote.user.id
+            if (!seen.has(quoteUserId)) {
+                mentionedIds.push(quoteUserId)
+                seen.add(quoteUserId)
+            }
+        }
+
+        // 4. 从 session.content 中解析 <at id="xxx"/> XML 格式
+        // 支持两种格式: <at id="xxx"/> 和 <at name='...'>xxx</at>
+        const content = session.content || ''
+        // 自闭合格式
+        const atRegex1 = /<at\s+id=["']([^"']+)["']\s*\/?>/g
+        let match: RegExpExecArray | null
+        while ((match = atRegex1.exec(content)) !== null) {
+            const id = match[1]
+            if (!seen.has(id)) {
+                mentionedIds.push(id)
+                seen.add(id)
+            }
+        }
+        // 包裹格式: <at name='...'>xxx</at>
+        const atRegex2 = /<at[^>]*>\s*(\d+)\s*<\/at>/g
+        while ((match = atRegex2.exec(content)) !== null) {
+            const id = match[1]
+            if (!seen.has(id)) {
+                mentionedIds.push(id)
+                seen.add(id)
+            }
+        }
+
         return mentionedIds
     }
 
@@ -171,6 +246,144 @@ export class BotManager {
             `[${session.platform}:${session.selfId}] ` +
             `频道 ${session.channelId}, 用户 ${session.userId}: ${message}`
         )
+    }
+
+    /**
+     * 获取消息判断的详细信息
+     */
+    getDecisionDetails(session: Session, botConfig: BotConfig): DecisionDetails {
+        const details: DecisionDetails = {
+            sourceFilter: { passed: false },
+            isMentioned: false,
+            mentionedBots: [],
+            isCommand: false,
+            commandFilter: { passed: false },
+            keywordFilter: { passed: false },
+            finalResult: 'skip',
+            finalReason: ''
+        }
+
+        // 1. 来源过滤
+        const sourcePassed = this.checkSourceFilter(session, botConfig)
+        details.sourceFilter.passed = sourcePassed
+        if (!sourcePassed) {
+            details.sourceFilter.reason = botConfig.enableSourceFilter
+                ? `${botConfig.sourceFilterMode === 'whitelist' ? '白名单' : '黑名单'}不匹配`
+                : '未启用'
+            details.finalResult = 'skip'
+            details.finalReason = '来源过滤未通过'
+            return details
+        }
+
+        // 2. 艾特检测
+        const mentionedIds = this.getMentionedBotIds(session)
+        details.isMentioned = mentionedIds.length > 0
+        details.mentionedBots = mentionedIds
+
+        const isSelfMentioned = mentionedIds.includes(session.selfId)
+        if (mentionedIds.length > 0) {
+            if (isSelfMentioned) {
+                details.finalResult = 'respond'
+                details.finalReason = '被艾特'
+            } else {
+                details.finalResult = 'yield'
+                details.finalReason = `其他bot被艾特: ${mentionedIds.join(', ')}`
+            }
+            return details
+        }
+
+        // 3. 指令检测
+        const isCommand = !!session.argv?.command
+        details.isCommand = isCommand
+        if (isCommand) {
+            const commandName = session.argv.command.name
+            details.commandName = commandName
+            const commandPassed = this.checkCommandPermission(session, botConfig)
+            details.commandFilter.passed = commandPassed
+            if (!commandPassed) {
+                details.commandFilter.reason = botConfig.enableCommandFilter
+                    ? `指令不在允许列表中`
+                    : '未启用'
+            }
+            details.finalResult = commandPassed ? 'respond' : 'skip'
+            details.finalReason = commandPassed ? '指令允许' : '指令不允许'
+            return details
+        }
+
+        // 4. 关键词检测
+        const content = session.content || ''
+        const keywordMatch = this.checkKeywordMatch(content, botConfig)
+        details.keywordFilter.passed = keywordMatch
+
+        if (!botConfig.enableKeywordFilter) {
+            details.keywordFilter.reason = '未启用关键词过滤，响应所有消息'
+        } else {
+            const { keywords = [], keywordFilterMode = 'whitelist' } = botConfig
+            if (keywords.length === 0) {
+                details.keywordFilter.reason = '关键词列表为空'
+            } else {
+                const matched = keywords.find(kw => content.includes(kw))
+                if (matched) {
+                    details.keywordFilter.matchedKeyword = matched
+                    details.keywordFilter.reason = `${keywordFilterMode === 'whitelist' ? '白名单' : '黑名单'}匹配: "${matched}"`
+                } else {
+                    details.keywordFilter.reason = `${keywordFilterMode === 'whitelist' ? '白名单' : '黑名单'}无匹配`
+                }
+            }
+        }
+
+        details.finalResult = keywordMatch ? 'respond' : 'skip'
+        details.finalReason = keywordMatch ? '关键词匹配' : '关键词不匹配'
+
+        return details
+    }
+
+    /**
+     * 格式化详细日志
+     * @param userName 用户名
+     */
+    formatVerboseLog(session: Session, content: string, details: DecisionDetails, botConfig: BotConfig, userName: string): string {
+        // 最终结果文字描述
+        const resultText: Record<string, string> = {
+            respond: '响应',
+            skip: '跳过',
+            yield: '让出'
+        }
+
+        // 构建判断过程
+        const parts: string[] = []
+
+        // 来源过滤（仅当开启时显示）
+        if (botConfig.enableSourceFilter) {
+            parts.push(`来源:${details.sourceFilter.passed ? '✓' : '✗'}`)
+        }
+
+        // 艾特（只有自己被艾特时才显示"是"）
+        const isSelfMentioned = details.mentionedBots.includes(session.selfId)
+        parts.push(isSelfMentioned ? `艾特:是` : `艾特:否`)
+
+        // 指令（仅当开启指令过滤时显示）
+        if (botConfig.enableCommandFilter) {
+            if (details.isCommand) {
+                parts.push(`指令:${details.commandName}(${details.commandFilter.passed ? '✓' : '✗'})`)
+            } else {
+                parts.push('指令:否')
+            }
+        }
+
+        // 关键词（仅当开启关键词过滤时显示）
+        if (botConfig.enableKeywordFilter) {
+            if (details.keywordFilter.matchedKeyword) {
+                parts.push(`关键词:"${details.keywordFilter.matchedKeyword}"`)
+            } else {
+                parts.push('关键词:✗')
+            }
+        }
+
+        // 组合最终日志
+        // 格式: xxx说：内容 | botid | [来源] | 艾特 | [指令] | [关键词] → 结果
+        const middlePart = parts.length > 0 ? ` | ${parts.join(' | ')}` : ''
+        return `${userName}说：${content} | ${session.selfId}${middlePart} → ${resultText[details.finalResult]}`
     }
 }
 

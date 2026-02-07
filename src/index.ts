@@ -1,7 +1,7 @@
 // src/index.ts
 import { Context, Schema } from 'koishi'
 import type { Config as ConfigType, BotInfo } from './types'
-import { MultiBotControllerService } from './bot-manager'
+import { MultiBotControllerService, DecisionDetails } from './bot-manager'
 
 export { BotConfig, BotInfo } from './types'
 export { MultiBotControllerService } from './bot-manager'
@@ -166,11 +166,12 @@ export function apply(ctx: Context, config: ConfigType) {
 
         const { platform, selfId, channel } = session
         const botConfig = manager.getBotConfig(platform, selfId)
+        const content = session.content || ''
 
         // 未配置的 bot 不响应任何消息
         if (!botConfig) {
             if ((channel as any).assignee === selfId) {
-                logger.debug(`[${platform}:${selfId}] 未配置控制规则，取消响应`)
+                logger.info(`[${platform}:${selfId}] 消息: "${content}" | 未配置控制规则，取消响应`)
                 ;(channel as any).assignee = ''
             }
             return
@@ -179,16 +180,24 @@ export function apply(ctx: Context, config: ConfigType) {
         // 已禁用的 bot 不响应任何消息
         if (!botConfig.enabled) {
             if ((channel as any).assignee === selfId) {
-                logger.debug(`[${platform}:${selfId}] 已禁用响应控制，取消响应`)
+                logger.info(`[${platform}:${selfId}] 消息: "${content}" | 已禁用响应控制，取消响应`)
                 ;(channel as any).assignee = ''
             }
             return
         }
 
+        // 详细日志模式：获取完整判断信息
+        if (config.verboseLog) {
+            const details = manager.getDecisionDetails(session, botConfig)
+            const userName = session.username || session.userId
+            const verboseLog = manager.formatVerboseLog(session, content, details, botConfig, userName)
+            logger.info(verboseLog)
+        }
+
         // ========== 1. 来源过滤（最高优先级）==========
         if (!manager.checkSourceFilter(session, botConfig)) {
             if ((channel as any).assignee === selfId) {
-                logger.debug(`[${platform}:${selfId}] 不在允许的来源中，取消响应`)
+                logger.info(`[${platform}:${selfId}] 消息: "${content}" | 不在允许的来源中，取消响应`)
                 ;(channel as any).assignee = ''
             }
             return
@@ -201,13 +210,13 @@ export function apply(ctx: Context, config: ConfigType) {
             if (mentionedIds.includes(selfId)) {
                 // 被艾特 → 接管消息处理
                 if ((channel as any).assignee !== selfId) {
-                    logger.info(`[${platform}:${selfId}] 被艾特，接管消息处理`)
+                    logger.info(`[${platform}:${selfId}] 消息: "${content}" | 被艾特，接管消息处理`)
                     ;(channel as any).assignee = selfId
                 }
             } else {
                 // 别人被艾特 → 取消响应
                 if ((channel as any).assignee === selfId) {
-                    logger.debug(`[${platform}:${selfId}] 被 ${mentionedIds.join(', ')} 艾特，但不是自己，取消响应`)
+                    logger.info(`[${platform}:${selfId}] 消息: "${content}" | 被 ${mentionedIds.join(', ')} 艾特，但不是自己，取消响应`)
                     ;(channel as any).assignee = ''
                 }
             }
@@ -221,12 +230,12 @@ export function apply(ctx: Context, config: ConfigType) {
             const hasPermission = manager.checkCommandPermission(session, botConfig)
             if (hasPermission) {
                 if ((channel as any).assignee !== selfId) {
-                    logger.info(`[${platform}:${selfId}] 指令权限验证通过，接管消息处理`)
+                    logger.info(`[${platform}:${selfId}] 消息: "${content}" | 指令: ${session.argv.command.name} | 权限验证通过，接管消息处理`)
                     ;(channel as any).assignee = selfId
                 }
             } else {
                 if ((channel as any).assignee === selfId) {
-                    logger.debug(`[${platform}:${selfId}] 指令权限验证失败，取消响应`)
+                    logger.info(`[${platform}:${selfId}] 消息: "${content}" | 指令: ${session.argv.command.name} | 权限验证失败，取消响应`)
                     ;(channel as any).assignee = ''
                 }
             }
@@ -237,12 +246,12 @@ export function apply(ctx: Context, config: ConfigType) {
         const keywordMatch = manager.checkKeywordMatch(session.content || '', botConfig)
         if (keywordMatch) {
             if ((channel as any).assignee !== selfId) {
-                logger.info(`[${platform}:${selfId}] 关键词匹配，接管消息处理`)
+                logger.info(`[${platform}:${selfId}] 消息: "${content}" | 关键词匹配，接管消息处理`)
                 ;(channel as any).assignee = selfId
             }
         } else {
             if ((channel as any).assignee === selfId) {
-                logger.debug(`[${platform}:${selfId}] 关键词不匹配，取消响应`)
+                logger.info(`[${platform}:${selfId}] 消息: "${content}" | 关键词不匹配，取消响应`)
                 ;(channel as any).assignee = ''
             }
         }

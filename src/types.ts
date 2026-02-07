@@ -38,4 +38,6 @@ export interface BotConfig {
 export interface Config {
     bots: BotConfig[]
     debug: boolean
+    /** 详细日志模式：显示每条消息的完整判断过程 */
+    verboseLog?: boolean
 }
