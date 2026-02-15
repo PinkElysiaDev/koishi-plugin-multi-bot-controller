@@ -177,21 +177,31 @@ export function apply(ctx: Context, config: ConfigType) {
         const isCommand = !!session.argv?.command
         const messageType = isCommand ? '指令' : '消息'
 
-        // 未配置的 bot 不响应任何消息
-        if (!botConfig) {
+        // 辅助函数：取消响应（清空 assignee）
+        const cancelResponse = (reason: string) => {
             if ((channel as any).assignee === selfId) {
-                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的${messageType}: "${content}" | 未配置控制规则，取消响应`)
+                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的${messageType}: "${content}" | ${reason}`)
                 ;(channel as any).assignee = ''
             }
+        }
+
+        // 辅助函数：接管响应（设置 assignee 为 selfId）
+        const takeResponse = (reason: string) => {
+            if ((channel as any).assignee !== selfId) {
+                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的消息: "${content}" | ${reason}`)
+                ;(channel as any).assignee = selfId
+            }
+        }
+
+        // 未配置的 bot 不响应任何消息
+        if (!botConfig) {
+            cancelResponse('未配置控制规则，取消响应')
             return
         }
 
         // 已禁用的 bot 不响应任何消息
         if (!botConfig.enabled) {
-            if ((channel as any).assignee === selfId) {
-                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的${messageType}: "${content}" | 已禁用响应控制，取消响应`)
-                ;(channel as any).assignee = ''
-            }
+            cancelResponse('已禁用响应控制，取消响应')
             return
         }
 
@@ -205,10 +215,7 @@ export function apply(ctx: Context, config: ConfigType) {
 
         // ========== 1. 来源过滤（最高优先级）==========
         if (!manager.checkSourceFilter(session, botConfig)) {
-            if ((channel as any).assignee === selfId) {
-                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的${messageType}: "${content}" | 不在允许的来源中，取消响应`)
-                ;(channel as any).assignee = ''
-            }
+            cancelResponse('不在允许的来源中，取消响应')
             return
         }
 
@@ -218,35 +225,22 @@ export function apply(ctx: Context, config: ConfigType) {
         if (mentionedIds.length > 0) {
             if (mentionedIds.includes(selfId)) {
                 // 被艾特 → 接管消息处理
-                if ((channel as any).assignee !== selfId) {
-                    logger.info(`[${platform}:${selfId}] 处理 ${sender} 的消息: "${content}" | 被艾特，接管消息处理`)
-                    ;(channel as any).assignee = selfId
-                }
+                takeResponse(`被 ${sender} 艾特，接管消息处理`)
             } else {
                 // 别人被艾特 → 取消响应
-                if ((channel as any).assignee === selfId) {
-                    logger.info(`[${platform}:${selfId}] 处理 ${sender} 的消息: "${content}" | 被 ${mentionedIds.join(', ')} 艾特，但不是自己，取消响应`)
-                    ;(channel as any).assignee = ''
-                }
+                cancelResponse('未满足触发条件，取消响应')
             }
             return  // 艾特处理完直接返回，跳过后续判断
         }
 
         // ========== 3. 非艾特时的正常过滤逻辑 ==========
         // 3a. 指令处理
-        const isCommand = !!session.argv?.command
         if (isCommand) {
             const hasPermission = manager.checkCommandPermission(session, botConfig)
             if (hasPermission) {
-                if ((channel as any).assignee !== selfId) {
-                    logger.info(`[${platform}:${selfId}] 处理 ${sender} 的指令: "${content}" | 指令: ${session.argv.command.name} | 权限验证通过，接管消息处理`)
-                    ;(channel as any).assignee = selfId
-                }
+                takeResponse(`指令: ${session.argv.command.name} | 权限验证通过，接管消息处理`)
             } else {
-                if ((channel as any).assignee === selfId) {
-                    logger.info(`[${platform}:${selfId}] 处理 ${sender} 的指令: "${content}" | 指令: ${session.argv.command.name} | 权限验证失败，取消响应`)
-                    ;(channel as any).assignee = ''
-                }
+                cancelResponse(`指令: ${session.argv.command.name} | 权限验证失败，取消响应`)
             }
             return
         }
@@ -254,15 +248,9 @@ export function apply(ctx: Context, config: ConfigType) {
         // 3b. 关键词过滤
         const keywordMatch = manager.checkKeywordMatch(session.content || '', botConfig)
         if (keywordMatch) {
-            if ((channel as any).assignee !== selfId) {
-                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的消息: "${content}" | 关键词匹配，接管消息处理`)
-                ;(channel as any).assignee = selfId
-            }
+            takeResponse('关键词匹配，接管消息处理')
         } else {
-            if ((channel as any).assignee === selfId) {
-                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的消息: "${content}" | 关键词不匹配，取消响应`)
-                ;(channel as any).assignee = ''
-            }
+            cancelResponse('未满足触发条件，取消响应')
         }
         return
     })
