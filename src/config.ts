@@ -146,6 +146,9 @@ export const createConfig = (ctx: Context): Schema<any> => {
             verboseLog: Schema.boolean()
                 .default(false)
                 .description('详细日志模式：显示每条消息的完整判断过程'),
+            restoreOnDispose: Schema.boolean()
+                .default(true)
+                .description('插件卸载时恢复被清空的 assignee（推荐开启）'),
         }).description('其他设置'),
     ])
 }
@@ -167,6 +170,9 @@ export const Config = Schema.intersect([
         verboseLog: Schema.boolean()
             .default(false)
             .description('详细日志模式：显示每条消息的完整判断过程'),
+        restoreOnDispose: Schema.boolean()
+            .default(true)
+            .description('插件卸载时恢复被清空的 assignee（推荐开启）'),
     }).description('其他设置'),
 ])
 

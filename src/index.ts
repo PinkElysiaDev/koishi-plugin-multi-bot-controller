@@ -7,6 +7,12 @@ export { BotConfig, BotInfo } from './types'
 export { MultiBotControllerService } from './bot-manager'
 export { name, Config } from './config'
 
+// 声明注入依赖
+export const inject = {
+    optional: ['database'],
+    required: [],
+}
+
 // 声明 Koishi 类型扩展
 declare module 'koishi' {
   interface Context {
@@ -167,11 +173,14 @@ export function apply(ctx: Context, config: ConfigType) {
         const { platform, selfId, channel } = session
         const botConfig = manager.getBotConfig(platform, selfId)
         const content = session.content || ''
+        const sender = session.username || session.userId || '未知用户'
+        const isCommand = !!session.argv?.command
+        const messageType = isCommand ? '指令' : '消息'
 
         // 未配置的 bot 不响应任何消息
         if (!botConfig) {
             if ((channel as any).assignee === selfId) {
-                logger.info(`[${platform}:${selfId}] 消息: "${content}" | 未配置控制规则，取消响应`)
+                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的${messageType}: "${content}" | 未配置控制规则，取消响应`)
                 ;(channel as any).assignee = ''
             }
             return
@@ -180,7 +189,7 @@ export function apply(ctx: Context, config: ConfigType) {
         // 已禁用的 bot 不响应任何消息
         if (!botConfig.enabled) {
             if ((channel as any).assignee === selfId) {
-                logger.info(`[${platform}:${selfId}] 消息: "${content}" | 已禁用响应控制，取消响应`)
+                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的${messageType}: "${content}" | 已禁用响应控制，取消响应`)
                 ;(channel as any).assignee = ''
             }
             return
@@ -197,7 +206,7 @@ export function apply(ctx: Context, config: ConfigType) {
         // ========== 1. 来源过滤（最高优先级）==========
         if (!manager.checkSourceFilter(session, botConfig)) {
             if ((channel as any).assignee === selfId) {
-                logger.info(`[${platform}:${selfId}] 消息: "${content}" | 不在允许的来源中，取消响应`)
+                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的${messageType}: "${content}" | 不在允许的来源中，取消响应`)
                 ;(channel as any).assignee = ''
             }
             return
@@ -210,13 +219,13 @@ export function apply(ctx: Context, config: ConfigType) {
             if (mentionedIds.includes(selfId)) {
                 // 被艾特 → 接管消息处理
                 if ((channel as any).assignee !== selfId) {
-                    logger.info(`[${platform}:${selfId}] 消息: "${content}" | 被艾特，接管消息处理`)
+                    logger.info(`[${platform}:${selfId}] 处理 ${sender} 的消息: "${content}" | 被艾特，接管消息处理`)
                     ;(channel as any).assignee = selfId
                 }
             } else {
                 // 别人被艾特 → 取消响应
                 if ((channel as any).assignee === selfId) {
-                    logger.info(`[${platform}:${selfId}] 消息: "${content}" | 被 ${mentionedIds.join(', ')} 艾特，但不是自己，取消响应`)
+                    logger.info(`[${platform}:${selfId}] 处理 ${sender} 的消息: "${content}" | 被 ${mentionedIds.join(', ')} 艾特，但不是自己，取消响应`)
                     ;(channel as any).assignee = ''
                 }
             }
@@ -230,12 +239,12 @@ export function apply(ctx: Context, config: ConfigType) {
             const hasPermission = manager.checkCommandPermission(session, botConfig)
             if (hasPermission) {
                 if ((channel as any).assignee !== selfId) {
-                    logger.info(`[${platform}:${selfId}] 消息: "${content}" | 指令: ${session.argv.command.name} | 权限验证通过，接管消息处理`)
+                    logger.info(`[${platform}:${selfId}] 处理 ${sender} 的指令: "${content}" | 指令: ${session.argv.command.name} | 权限验证通过，接管消息处理`)
                     ;(channel as any).assignee = selfId
                 }
             } else {
                 if ((channel as any).assignee === selfId) {
-                    logger.info(`[${platform}:${selfId}] 消息: "${content}" | 指令: ${session.argv.command.name} | 权限验证失败，取消响应`)
+                    logger.info(`[${platform}:${selfId}] 处理 ${sender} 的指令: "${content}" | 指令: ${session.argv.command.name} | 权限验证失败，取消响应`)
                     ;(channel as any).assignee = ''
                 }
             }
@@ -246,12 +255,12 @@ export function apply(ctx: Context, config: ConfigType) {
         const keywordMatch = manager.checkKeywordMatch(session.content || '', botConfig)
         if (keywordMatch) {
             if ((channel as any).assignee !== selfId) {
-                logger.info(`[${platform}:${selfId}] 消息: "${content}" | 关键词匹配，接管消息处理`)
+                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的消息: "${content}" | 关键词匹配，接管消息处理`)
                 ;(channel as any).assignee = selfId
             }
         } else {
             if ((channel as any).assignee === selfId) {
-                logger.info(`[${platform}:${selfId}] 消息: "${content}" | 关键词不匹配，取消响应`)
+                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的消息: "${content}" | 关键词不匹配，取消响应`)
                 ;(channel as any).assignee = ''
             }
         }
@@ -299,5 +308,64 @@ export function apply(ctx: Context, config: ConfigType) {
         logger.info('Multi-Bot Controller 已就绪')
         emitBotsUpdated()
         commandsService['scanCommands']()
+    })
+
+    // 插件卸载时恢复 assignee
+    ctx.on('dispose', async () => {
+        if (config.restoreOnDispose === false) {
+            logger.info('插件卸载时恢复 assignee 功能已禁用')
+            return
+        }
+
+        // 检查 database 是否可用
+        if (!ctx.database) {
+            logger.warn('database 不可用，跳过 assignee 恢复')
+            return
+        }
+
+        logger.info('插件卸载中，开始恢复被清空的 assignee...')
+
+        try {
+            const enabledBots = (config.bots || []).filter(b => b.enabled)
+
+            if (enabledBots.length === 0) {
+                logger.info('没有启用的 bot，跳过恢复')
+                return
+            }
+
+            // 按平台分组 bot
+            const platformMap = new Map<string, string[]>()
+            for (const bot of enabledBots) {
+                if (!platformMap.has(bot.platform)) {
+                    platformMap.set(bot.platform, [])
+                }
+                platformMap.get(bot.platform)!.push(bot.selfId)
+            }
+
+            let restoredCount = 0
+
+            // 遍历每个平台，恢复空的 assignee
+            for (const [platform, selfIds] of platformMap) {
+                const defaultBot = selfIds[0]
+
+                // 查询该平台下所有 assignee 为空的 channel
+                const emptyChannels = await ctx.database.get('channel', {
+                    platform,
+                    assignee: ''
+                })
+
+                for (const channel of emptyChannels) {
+                    await ctx.database.setChannel(channel.platform, channel.id, {
+                        assignee: defaultBot
+                    })
+                    restoredCount++
+                    logger.debug(`恢复 ${platform}:${channel.id} 的 assignee 为 ${defaultBot}`)
+                }
+            }
+
+            logger.info(`插件卸载完成，已恢复 ${restoredCount} 个 channel 的 assignee`)
+        } catch (error) {
+            logger.error('恢复 assignee 时出错:', error)
+        }
     })
 }

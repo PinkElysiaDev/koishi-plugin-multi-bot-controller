@@ -40,4 +40,6 @@ export interface Config {
     debug: boolean
     /** 详细日志模式：显示每条消息的完整判断过程 */
     verboseLog?: boolean
+    /** 插件卸载时是否恢复被清空的 assignee（按平台自动分配） */
+    restoreOnDispose?: boolean
 }
