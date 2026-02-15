@@ -1,7 +1,7 @@
 // src/index.ts
 import { Context, Schema } from 'koishi'
 import type { Config as ConfigType, BotInfo } from './types'
-import { MultiBotControllerService, DecisionDetails } from './bot-manager'
+import { MultiBotControllerService } from './bot-manager'
 
 export { BotConfig, BotInfo } from './types'
 export { MultiBotControllerService } from './bot-manager'
@@ -173,14 +173,12 @@ export function apply(ctx: Context, config: ConfigType) {
         const { platform, selfId, channel } = session
         const botConfig = manager.getBotConfig(platform, selfId)
         const content = session.content || ''
-        const sender = session.username || session.userId || '未知用户'
         const isCommand = !!session.argv?.command
-        const messageType = isCommand ? '指令' : '消息'
 
         // 辅助函数：取消响应（清空 assignee）
         const cancelResponse = (reason: string) => {
             if ((channel as any).assignee === selfId) {
-                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的${messageType}: "${content}" | ${reason}`)
+                logger.info(`[${platform}:${selfId}] ${reason}`)
                 ;(channel as any).assignee = ''
             }
         }
@@ -188,7 +186,7 @@ export function apply(ctx: Context, config: ConfigType) {
         // 辅助函数：接管响应（设置 assignee 为 selfId）
         const takeResponse = (reason: string) => {
             if ((channel as any).assignee !== selfId) {
-                logger.info(`[${platform}:${selfId}] 处理 ${sender} 的消息: "${content}" | ${reason}`)
+                logger.info(`[${platform}:${selfId}] ${reason}`)
                 ;(channel as any).assignee = selfId
             }
         }
@@ -222,16 +220,12 @@ export function apply(ctx: Context, config: ConfigType) {
         // ========== 2. 艾特检测 ==========
         const mentionedIds = manager.getMentionedBotIds(session)
 
-        if (mentionedIds.length > 0) {
-            if (mentionedIds.includes(selfId)) {
-                // 被艾特 → 接管消息处理
-                takeResponse(`被 ${sender} 艾特，接管消息处理`)
-            } else {
-                // 别人被艾特 → 取消响应
-                cancelResponse('未满足触发条件，取消响应')
-            }
-            return  // 艾特处理完直接返回，跳过后续判断
+        // 只有当前 bot 被艾特时才特殊处理，跳过关键词检查
+        if (mentionedIds.includes(selfId)) {
+            takeResponse(`被艾特，接管消息处理`)
+            return
         }
+        // 其他 bot 被艾特时，当前 bot 仍然需要检查关键词，所以不在这里 return
 
         // ========== 3. 非艾特时的正常过滤逻辑 ==========
         // 3a. 指令处理
@@ -246,11 +240,12 @@ export function apply(ctx: Context, config: ConfigType) {
         }
 
         // 3b. 关键词过滤
-        const keywordMatch = manager.checkKeywordMatch(session.content || '', botConfig)
+        const rawContent = session.content || ''
+        const keywordMatch = manager.checkKeywordMatch(rawContent, botConfig)
         if (keywordMatch) {
-            takeResponse('关键词匹配，接管消息处理')
+            takeResponse(`消息: "${content}" | 关键词匹配，接管消息处理`)
         } else {
-            cancelResponse('未满足触发条件，取消响应')
+            cancelResponse(`消息: "${content}" | 未满足触发条件，取消响应`)
         }
         return
     })

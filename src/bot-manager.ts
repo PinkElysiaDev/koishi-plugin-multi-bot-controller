@@ -86,9 +86,13 @@ export class BotManager {
         }
 
         // 3. 检查是否回复某个 bot（quote）
+        // 只有当被引用消息的作者是配置的 bot 时才添加到 mentionedIds
         if (session.quote?.user?.id) {
             const quoteUserId = session.quote.user.id
-            if (!seen.has(quoteUserId)) {
+            const isBot = this.configs.some(
+                bot => bot.platform === session.platform && bot.selfId === quoteUserId
+            )
+            if (isBot && !seen.has(quoteUserId)) {
                 mentionedIds.push(quoteUserId)
                 seen.add(quoteUserId)
             }
