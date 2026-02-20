@@ -195,6 +195,7 @@ export class BotManager {
     /**
      * 检查指令权限
      * 只响应列表中的指令
+     * 支持前缀匹配：如果允许了 "chatluna"，则自动允许所有 "chatluna.*" 子指令
      */
     checkCommandPermission(session: Session, botConfig: BotConfig): boolean {
         if (!session.argv?.command) {
@@ -213,7 +214,18 @@ export class BotManager {
         }
 
         const validCommands = commands.filter(c => c !== '')
-        return validCommands.includes(commandName)
+
+        // 精确匹配
+        if (validCommands.includes(commandName)) return true
+
+        // 前缀匹配：如果允许了父指令，则自动允许其所有子指令
+        for (const cmd of validCommands) {
+            if (commandName.startsWith(cmd + '.')) {
+                return true
+            }
+        }
+
+        return false
     }
 
     /**

@@ -41,6 +41,10 @@ export const usage = `---
 - **adapter-onebot 多开**: 使用 adapter-onebot 多开时无需修改默认的服务器监听路径
 - **Bug 反馈**: 请在插件主页提交 Issue
 
+### 更新说明
+
+**1.0.11 版本**: 修复开启指令过滤且配置允许父指令情况下，子指令无法触发的bug
+
 ---
 
 `
