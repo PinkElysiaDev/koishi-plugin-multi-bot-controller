@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-multi-bot-controller",
   "description": "Multi-bot response controller - manages the response behavior of multiple bots in the same channel by automatically adjusting the assignee field in the channel table, supporting keyword and command-based filtering rules",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -30,7 +30,7 @@
   ],
   "koishi": {
     "description": {
-      "zh": "多 Bot 响应控制器 - 通过自动调整 channel 表中的 assignee 字段管理多个 Bot 在同一频道中的响应行为，支持基于关键词和指令的过滤规则",
+      "zh": "多 Bot 响应控制器，可自动解决由 assign 字段不匹配导致的 bot 对艾特外的指令无响应故障 - 通过自动调整 channel 表中的 assignee 字段管理多个 Bot 在同一频道中的响应行为，支持基于关键词和指令的过滤规则",
       "en": "Multi-bot response controller - manages the response behavior of multiple bots in the same channel by automatically adjusting the assignee field in the channel table, supporting keyword and command-based filtering rules"
     },
     "service": {
