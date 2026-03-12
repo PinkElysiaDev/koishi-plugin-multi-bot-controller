@@ -135,6 +135,19 @@ export function apply(ctx: Context, config: ConfigType) {
 
     const commandsService = new CommandsService(ctx)
 
+    // 缓存运行中的 bot 列表，供 dispose 时使用（dispose 时 bot 可能已断开，不能实时查询状态）
+    const cachedBotList: Array<{ platform: string; selfId: string }> = []
+    const refreshBotCache = () => {
+        const bots = ctx.bots || []
+        cachedBotList.length = 0
+        for (const b of bots) {
+            cachedBotList.push({ platform: b.platform, selfId: b.selfId })
+        }
+        logger.debug(`Bot 缓存已更新，共 ${cachedBotList.length} 个`)
+    }
+    ctx.on('bot-added', refreshBotCache)
+    ctx.on('bot-updated', refreshBotCache)
+
     logger.info('Multi-Bot Controller 插件已加载')
     logger.info(`已配置 ${(config.bots || []).length} 个 Bot 控制规则`)
 
@@ -149,6 +162,11 @@ export function apply(ctx: Context, config: ConfigType) {
     // 注意：middleware 执行顺序很关键，需要在其他插件之前执行
     ctx.middleware((session, next) => {
         try {
+            // 未配置任何规则时，不拦截消息，直接放行
+            if (!config.bots || config.bots.length === 0) {
+                return next()
+            }
+
             const { platform, selfId } = session
             const botConfig = manager.getBotConfig(platform, selfId)
 
@@ -172,6 +190,9 @@ export function apply(ctx: Context, config: ConfigType) {
     })
 
     ctx.on('attach-channel', (session) => {
+        // 未配置任何规则时，不干预 assignee
+        if (!config.bots || config.bots.length === 0) return
+
         if (session.isDirect) return
 
         const { platform, selfId, channel } = session
@@ -291,10 +312,38 @@ export function apply(ctx: Context, config: ConfigType) {
         })
 
     // 插件就绪时
-    ctx.on('ready', () => {
+    ctx.on('ready', async () => {
         logger.info('Multi-Bot Controller 已就绪')
+        refreshBotCache()
         emitBotsUpdated()
         commandsService['scanCommands']()
+
+        // 如果没有配置任何规则，尝试修复上次因插件异常卸载导致 assignee 被清空的频道
+        if ((!config.bots || config.bots.length === 0) && ctx.database && cachedBotList.length > 0) {
+            try {
+                // 按平台分组，每个平台取第一个 bot 作为恢复目标
+                const platformMap = new Map<string, string>()
+                for (const bot of cachedBotList) {
+                    if (!platformMap.has(bot.platform)) {
+                        platformMap.set(bot.platform, bot.selfId)
+                    }
+                }
+                let restoredCount = 0
+                for (const [platform, defaultBotId] of platformMap) {
+                    const emptyChannels = await ctx.database.get('channel', { platform, assignee: '' })
+                    for (const channel of emptyChannels) {
+                        await ctx.database.setChannel(channel.platform, channel.id, { assignee: defaultBotId })
+                        restoredCount++
+                        logger.debug(`[启动修复] 恢复 ${platform}:${channel.id} 的 assignee 为 ${defaultBotId}`)
+                    }
+                }
+                if (restoredCount > 0) {
+                    logger.info(`[启动修复] 已修复 ${restoredCount} 个 assignee 被清空的频道`)
+                }
+            } catch (err) {
+                logger.error('[启动修复] 修复 assignee 时出错:', err)
+            }
+        }
     })
 
     // 插件卸载时恢复 assignee
@@ -315,14 +364,21 @@ export function apply(ctx: Context, config: ConfigType) {
         try {
             const enabledBots = (config.bots || []).filter(b => b.enabled)
 
-            if (enabledBots.length === 0) {
-                logger.info('没有启用的 bot，跳过恢复')
-                return
+            // 如果没有配置启用的 bot，使用缓存的 bot 列表
+            // （dispose 时 bot 可能已断开，不能用 status === 'online' 过滤）
+            let restoreBots: Array<{ platform: string; selfId: string }> = enabledBots
+            if (restoreBots.length === 0) {
+                if (cachedBotList.length === 0) {
+                    logger.warn('没有启用的 bot 配置且 bot 缓存为空，跳过恢复')
+                    return
+                }
+                restoreBots = cachedBotList.slice()
+                logger.info(`未配置 bot 规则，使用缓存的 ${restoreBots.length} 个 bot 恢复 assignee`)
             }
 
             // 按平台分组 bot
             const platformMap = new Map<string, string[]>()
-            for (const bot of enabledBots) {
+            for (const bot of restoreBots) {
                 if (!platformMap.has(bot.platform)) {
                     platformMap.set(bot.platform, [])
                 }
