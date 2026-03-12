@@ -41,9 +41,10 @@ export const usage = `---
 - **adapter-onebot 多开**: 使用 adapter-onebot 多开时无需修改默认的服务器监听路径
 - **Bug 反馈**: 请在插件主页提交 Issue
 
-### 更新说明
+### **1.0.13 版本更新说明**: 
 
-**1.0.11 版本**: 修复开启指令过滤且配置允许父指令情况下，子指令无法触发的bug
+- 修复未配置任何过滤规则情况下仍然会拦截指令的 bug。
+- 修复未启用的 bot 在插件关闭时无法正常恢复默认 assignee 字段的 bug。
 
 ---
 
@@ -146,7 +147,7 @@ export function apply(ctx: Context, config: ConfigType) {
         logger.debug(`Bot 缓存已更新，共 ${cachedBotList.length} 个`)
     }
     ctx.on('bot-added', refreshBotCache)
-    ctx.on('bot-updated', refreshBotCache)
+    ctx.on('bot-removed', refreshBotCache)
 
     logger.info('Multi-Bot Controller 插件已加载')
     logger.info(`已配置 ${(config.bots || []).length} 个 Bot 控制规则`)
