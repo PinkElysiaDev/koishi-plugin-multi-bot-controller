@@ -198,11 +198,10 @@ export class BotManager {
      * 支持前缀匹配：如果允许了 "chatluna"，则自动允许所有 "chatluna.*" 子指令
      */
     checkCommandPermission(session: Session, botConfig: BotConfig): boolean {
-        if (!session.argv?.command) {
-            return true
+        const commandName = session.argv?.command?.name
+        if (typeof commandName !== 'string' || commandName.length === 0) {
+            return false
         }
-
-        const commandName = session.argv.command.name
         const { enableCommandFilter, commands = [] } = botConfig
 
         if (!enableCommandFilter) {
@@ -309,10 +308,10 @@ export class BotManager {
         }
 
         // 3. 指令检测
-        const isCommand = !!session.argv?.command
+        const commandName = session.argv?.command?.name
+        const isCommand = typeof commandName === 'string' && commandName.length > 0
         details.isCommand = isCommand
         if (isCommand) {
-            const commandName = session.argv.command.name
             details.commandName = commandName
             const commandPassed = this.checkCommandPermission(session, botConfig)
             details.commandFilter.passed = commandPassed

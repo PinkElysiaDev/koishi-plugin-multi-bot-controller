@@ -149,6 +149,10 @@ export const createConfig = (ctx: Context): Schema<any> => {
             restoreOnDispose: Schema.boolean()
                 .default(true)
                 .description('插件卸载时恢复被清空的 assignee（推荐开启）'),
+            commandSchemaCacheSeconds: Schema.number()
+                .default(10)
+                .min(0)
+                .description('指令列表变动后的短暂缓存时间，避免插件重载期间新指令保存失败；设为 0 可关闭缓存。'),
         }).description('其他设置'),
     ])
 }
@@ -173,6 +177,10 @@ export const Config = Schema.intersect([
         restoreOnDispose: Schema.boolean()
             .default(true)
             .description('插件卸载时恢复被清空的 assignee（推荐开启）'),
+        commandSchemaCacheSeconds: Schema.number()
+            .default(10)
+            .min(0)
+            .description('指令列表变动后的短暂缓存时间，避免插件重载期间新指令保存失败；设为 0 可关闭缓存。'),
     }).description('其他设置'),
 ])
 

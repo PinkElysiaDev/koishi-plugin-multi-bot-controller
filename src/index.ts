@@ -41,14 +41,15 @@ export const usage = `---
 - **adapter-onebot 多开**: 使用 adapter-onebot 多开时无需修改默认的服务器监听路径
 - **Bug 反馈**: 请在插件主页提交 Issue
 
-### **1.0.13 版本更新说明**: 
+### **1.0.14 版本更新说明**: 
 
-- 修复未配置任何过滤规则情况下仍然会拦截指令的 bug。
-- 修复未启用的 bot 在插件关闭时无法正常恢复默认 assignee 字段的 bug。
+- 增强指令过滤系统配置项的缓存逻辑，保障可用性。
 
 ---
 
 `
+
+const recentCommandCache = new Map<string, number>()
 
 export function apply(ctx: Context, config: ConfigType) {
     const logger = ctx.logger('multi-bot-controller')
@@ -77,13 +78,19 @@ export function apply(ctx: Context, config: ConfigType) {
     class CommandsService {
         private commandList: string[] = []
         private debounceTimer: NodeJS.Timeout | null = null
+        private cacheExpiryTimer: NodeJS.Timeout | null = null
 
         constructor(private ctx: Context) {
-            setTimeout(() => this.scanCommands(), 1000)
+            this.scanCommands()
             this.ctx.on('internal/runtime', () => this.scheduleScan())
             this.ctx.on('command-added', () => this.scheduleScan())
             this.ctx.on('command-removed', () => this.scheduleScan())
             this.ctx.on('command-updated', () => this.scheduleScan())
+        }
+
+        private get cacheDurationMs() {
+            const seconds = Number(config.commandSchemaCacheSeconds ?? 10)
+            return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0
         }
 
         private scheduleScan() {
@@ -91,28 +98,96 @@ export function apply(ctx: Context, config: ConfigType) {
             this.debounceTimer = setTimeout(() => this.scanCommands(), 200)
         }
 
+        private getCommandName(command: unknown): string | null {
+            if (!command || typeof command !== 'object') return null
+            const name = (command as { name?: unknown }).name
+            if (typeof name !== 'string' || name === '' || name.includes('.')) return null
+            return name
+        }
+
         private scanCommands() {
             const commandList = (this.ctx.$commander as any)?._commandList
             if (!commandList) {
                 this.commandList = []
+                this.pruneExpiredCache()
                 this.updateConfigSchema()
                 return
             }
 
-            const commands = commandList
-                .filter((cmd: any) => cmd.name && cmd.name !== '' && !cmd.name.includes('.'))
-                .map((cmd: any) => cmd.name)
+            const commands: string[] = commandList
+                .map((cmd: unknown) => this.getCommandName(cmd))
+                .filter((name: string | null): name is string => name !== null)
                 .sort()
+
+            this.rememberRecentCommands(commands)
+            this.pruneExpiredCache()
 
             if (JSON.stringify(this.commandList) !== JSON.stringify(commands)) {
                 this.commandList = commands
-                logger.debug(`指令列表已更新，共 ${commands.length} 个`)
+                logger.debug(`指令列表已更新：数量=${commands.length}`)
                 this.updateConfigSchema()
+                return
+            }
+
+            this.updateConfigSchema()
+        }
+
+        private rememberRecentCommands(commands: string[]) {
+            const duration = this.cacheDurationMs
+            if (duration <= 0) {
+                recentCommandCache.clear()
+                this.clearCacheExpiryTimer()
+                return
+            }
+
+            const expiresAt = Date.now() + duration
+            for (const command of commands) {
+                recentCommandCache.set(command, expiresAt)
+            }
+            this.scheduleCacheExpiry()
+        }
+
+        private pruneExpiredCache() {
+            const now = Date.now()
+            let changed = false
+            for (const [command, expiresAt] of recentCommandCache) {
+                if (expiresAt <= now) {
+                    recentCommandCache.delete(command)
+                    changed = true
+                }
+            }
+            if (changed) {
+                this.scheduleCacheExpiry()
+            }
+        }
+
+        private scheduleCacheExpiry() {
+            this.clearCacheExpiryTimer()
+            if (recentCommandCache.size === 0) return
+
+            const nextExpiresAt = Math.min(...recentCommandCache.values())
+            const delay = Math.max(1, nextExpiresAt - Date.now() + 1)
+            this.cacheExpiryTimer = setTimeout(() => {
+                this.pruneExpiredCache()
+                this.updateConfigSchema()
+            }, delay)
+        }
+
+        private clearCacheExpiryTimer() {
+            if (this.cacheExpiryTimer) {
+                clearTimeout(this.cacheExpiryTimer)
+                this.cacheExpiryTimer = null
             }
         }
 
         private updateConfigSchema() {
-            const commands = this.commandList
+            this.pruneExpiredCache()
+
+            const currentCommands = new Set(this.commandList)
+            const cachedCommands = [...recentCommandCache.keys()]
+                .filter(command => !currentCommands.has(command))
+                .sort()
+            const commands = [...this.commandList, ...cachedCommands].sort()
 
             if (commands.length === 0) {
                 this.ctx.schema.set('multi-bot-controller.commandFilter', Schema.array(Schema.union([
@@ -122,15 +197,15 @@ export function apply(ctx: Context, config: ConfigType) {
             }
 
             const unionSchema = Schema.union(commands.map(name =>
-                Schema.const(name).description(name)
+                Schema.const(name).description(currentCommands.has(name) ? name : `${name}（重载缓存，稍后自动移除）`)
             ))
 
             this.ctx.schema.set('multi-bot-controller.commandFilter', Schema.array(unionSchema)
                 .default([])
-                .description(`允许响应的指令列表（共 ${commands.length} 个可用指令）`)
+                .description(`允许响应的指令列表（当前=${this.commandList.length}，缓存=${cachedCommands.length}）`)
                 .role('select'))
 
-            logger.info(`指令 Schema 已更新，共 ${commands.length} 个选项`)
+            logger.info(`指令 Schema 已更新：总数=${commands.length}，当前=${this.commandList.length}，缓存=${cachedCommands.length}`)
         }
     }
 
@@ -142,7 +217,10 @@ export function apply(ctx: Context, config: ConfigType) {
         const bots = ctx.bots || []
         cachedBotList.length = 0
         for (const b of bots) {
-            cachedBotList.push({ platform: b.platform, selfId: b.selfId })
+            const platform = b.platform
+            const selfId = b.selfId
+            if (typeof platform !== 'string' || typeof selfId !== 'string') continue
+            cachedBotList.push({ platform, selfId })
         }
         logger.debug(`Bot 缓存已更新，共 ${cachedBotList.length} 个`)
     }
@@ -199,7 +277,8 @@ export function apply(ctx: Context, config: ConfigType) {
         const { platform, selfId, channel } = session
         const botConfig = manager.getBotConfig(platform, selfId)
         const content = session.content || ''
-        const isCommand = !!session.argv?.command
+        const commandName = session.argv?.command?.name
+        const isCommand = typeof commandName === 'string' && commandName.length > 0
 
         // 辅助函数：取消响应（清空 assignee）
         const cancelResponse = (reason: string) => {
@@ -232,7 +311,7 @@ export function apply(ctx: Context, config: ConfigType) {
         // 详细日志模式：获取完整判断信息
         if (config.verboseLog) {
             const details = manager.getDecisionDetails(session, botConfig)
-            const userName = session.username || session.userId
+            const userName = session.username || session.userId || 'unknown'
             const verboseLog = manager.formatVerboseLog(session, content, details, botConfig, userName)
             logger.info(verboseLog)
         }
@@ -258,9 +337,9 @@ export function apply(ctx: Context, config: ConfigType) {
         if (isCommand) {
             const hasPermission = manager.checkCommandPermission(session, botConfig)
             if (hasPermission) {
-                takeResponse(`指令: ${session.argv.command.name} | 权限验证通过，接管消息处理`)
+                takeResponse(`指令: ${commandName} | 权限验证通过，接管消息处理`)
             } else {
-                cancelResponse(`指令: ${session.argv.command.name} | 权限验证失败，取消响应`)
+                cancelResponse(`指令: ${commandName} | 权限验证失败，取消响应`)
             }
             return
         }

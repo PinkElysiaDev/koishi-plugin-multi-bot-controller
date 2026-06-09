@@ -42,4 +42,6 @@ export interface Config {
     verboseLog?: boolean
     /** 插件卸载时是否恢复被清空的 assignee（按平台自动分配） */
     restoreOnDispose?: boolean
+    /** 指令列表变动后的短暂缓存时间，避免插件重载期间新指令保存失败；设为 0 可关闭缓存。 */
+    commandSchemaCacheSeconds?: number
 }
