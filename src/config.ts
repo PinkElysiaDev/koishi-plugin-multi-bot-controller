@@ -61,7 +61,7 @@ const createBotConfigSchema = (): Schema<BotConfig> => {
                 .description('**Bot 平台名称**（如 onebot, qq, discord）')
                 .required(),
             selfId: Schema.string()
-                .description('**Bot 账号 ID**')
+                .description('**Bot 账号 ID**（可用 mc.bots 指令查看在线 Bot 的 platform 与 selfId）')
                 .required(),
             enabled: Schema.boolean()
                 .default(true)
@@ -140,7 +140,7 @@ export const createConfig = (ctx: Context): Schema<any> => {
                 .description(`Bot 配置列表${commands.length > 0 ? `\n\n检测到 ${commands.length} 个可用指令` : ''}`),
         }),
         Schema.object({
-            debug: Schema.boolean()
+        debug: Schema.boolean()
                 .default(false)
                 .description('启用调试日志'),
             verboseLog: Schema.boolean()
@@ -169,18 +169,18 @@ export const Config = Schema.intersect([
     }),
     Schema.object({
         debug: Schema.boolean()
-            .default(false)
-            .description('启用调试日志'),
+                .default(false)
+                .description('启用调试日志'),
         verboseLog: Schema.boolean()
-            .default(false)
-            .description('详细日志模式：显示每条消息的完整判断过程'),
+                .default(false)
+                .description('详细日志模式：显示每条消息的完整判断过程'),
         restoreOnDispose: Schema.boolean()
-            .default(true)
-            .description('插件卸载时恢复被清空的 assignee（推荐开启）'),
+                .default(true)
+                .description('插件卸载时恢复被清空的 assignee（推荐开启）'),
         commandSchemaCacheSeconds: Schema.number()
-            .default(10)
-            .min(0)
-            .description('指令列表变动后的短暂缓存时间，避免插件重载期间新指令保存失败；设为 0 可关闭缓存。'),
+                .default(10)
+                .min(0)
+                .description('指令列表变动后的短暂缓存时间，避免插件重载期间新指令保存失败；设为 0 可关闭缓存。'),
     }).description('其他设置'),
 ])
 

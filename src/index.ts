@@ -41,6 +41,11 @@ export const usage = `---
 - **adapter-onebot 多开**: 使用 adapter-onebot 多开时无需修改默认的服务器监听路径
 - **Bug 反馈**: 请在插件主页提交 Issue
 
+### **1.0.15 版本更新说明**:
+
+- 新增 \`mc.bots\` 指令：查看当前 Bot 的 \`platform\` 与 \`selfId\`，方便填写插件配置。
+- platform 与 selfId 的配置方式保持纯文本填写，行为与旧版一致。
+
 ### **1.0.14 版本更新说明**: 
 
 - 增强指令过滤系统配置项的缓存逻辑，保障可用性。
@@ -354,6 +359,34 @@ export function apply(ctx: Context, config: ConfigType) {
         }
         return
     })
+
+    // 查看当前 Bot 的 platform 与 selfId（方便填写配置）
+    ctx.command('mc.bots', '查看当前 Bot 的 platform 与 selfId')
+        .alias('mbc.bots')
+        .action(() => {
+            const bots = ctx.bots || []
+            if (bots.length === 0) {
+                return '当前没有任何 Bot 实例\n\n提示：请先在「适配器」中添加并启动 Bot，再使用本指令查询其 platform 与 selfId'
+            }
+
+            let output = `当前 Bot 列表（共 ${bots.length} 个）：\n\n`
+
+            for (const bot of bots) {
+                const { platform, selfId } = bot
+                if (typeof platform !== 'string' || typeof selfId !== 'string') continue
+                const configured = !!manager.getBotConfig(platform, selfId)
+                const name = bot.user?.name
+
+                output += `## ${platform}:${selfId}\n`
+                output += `- platform: ${platform}\n`
+                output += `- selfId: ${selfId}\n`
+                if (typeof name === 'string' && name) output += `- 名称: ${name}\n`
+                output += `- 状态: ${bot.status === 'online' ? '在线' : '离线'}\n`
+                output += `- 响应控制: ${configured ? '已配置' : '未配置（不响应群消息）'}\n\n`
+            }
+
+            return output.trim()
+        })
 
     // 查看当前配置
     ctx.command('mc.config', '查看当前插件配置')

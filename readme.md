@@ -46,6 +46,7 @@ pnpm add koishi-plugin-multi-bot-controller
 |--------|------|--------|------|
 | `debug` | `boolean` | `false` | 是否启用调试日志 |
 | `bots` | `BotConfig[]` | `[]` | Bot 配置列表 |
+| `commandSchemaCacheSeconds` | `number` | `10` | 指令列表变动后的短暂缓存时间（秒），设为 `0` 关闭 |
 
 ### Bot 配置 (BotConfig)
 
@@ -54,7 +55,7 @@ pnpm add koishi-plugin-multi-bot-controller
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `platform` | `string` | **必需** | 平台名称（如 `onebot`, `qq`, `discord`） |
-| `selfId` | `string` | **必需** | Bot 账号 ID |
+| `selfId` | `string` | **必需** | Bot 账号 ID（可用 `mc.bots` 指令查看在线 Bot 的 platform 与 selfId） |
 | `enabled` | `boolean` | `true` | 是否启用此 bot 的响应控制 |
 
 #### 指令过滤
@@ -184,7 +185,7 @@ bots:
 
 | 命令 | 别名 | 说明 |
 |------|------|------|
-| `mc.bots` | `mbc.bots` | 查看可用的 Bot 列表 |
+| `mc.bots` | `mbc.bots` | 查看当前 Bot 的 platform 与 selfId（含名称、在线状态、是否已配置响应控制） |
 | `mc.commands` | `mbc.commands` | 查看可用的指令列表 |
 | `mc.copy-commands` | `mbc.copy-commands` | 获取所有指令名称（方便配置时使用） |
 | `mc.config` | `mbc.config` | 查看当前插件配置 |
